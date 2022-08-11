@@ -30,8 +30,6 @@ namespace osu.Game.Rulesets.Mods
 
         public override bool ValidForMultiplayerAsFreeMod => false;
 
-        private ScoreProcessor? scoreProcessor;
-
         [SettingSource("Rewind Time", "The amount of time (in seconds) to rewind when a miss occurs")]
         public BindableNumber<double> RewindTime { get; } = new BindableDouble
         {
@@ -57,8 +55,6 @@ namespace osu.Game.Rulesets.Mods
         private double invulnerableTime = 0;
 
         protected double CurrentTime = 0;
-
-        public BindableNumber<double> SpeedChange { get; } = new BindableNumber<double>(1);
 
         public ScoreRank AdjustRank(ScoreRank rank, double accuracy) => rank;
 
@@ -91,16 +87,11 @@ namespace osu.Game.Rulesets.Mods
         {
             // jank...
             CurrentTime = playfield.Clock.CurrentTime;
-
-            if (!Missed.Value && scoreProcessor?.HitEvents.Count > 0 && (scoreProcessor?.HitEvents.Last().Result.BreaksCombo() ?? false))
-            {
-                Missed.Value = true;
-            }
         }
 
         public void ApplyToScoreProcessor(ScoreProcessor scoreProcessor)
         {
-            this.scoreProcessor = scoreProcessor;
+            scoreProcessor.Accuracy.BindValueChanged(acc => Missed.Value = scoreProcessor.HitEvents.LastOrDefault().Result.BreaksCombo());
         }
     }
 }
