@@ -53,11 +53,11 @@ namespace osu.Game.Rulesets.Mods
             Precision = 0.1
         };
 
-        public BindableBool Missed = new BindableBool(false);
+        public BindableBool Missed = new BindableBool();
 
-        private double invulnerableTime = 0;
+        private double invulnerableTime;
 
-        protected double CurrentTime = 0;
+        protected double CurrentTime;
 
         public ScoreRank AdjustRank(ScoreRank rank, double accuracy) => rank;
 
