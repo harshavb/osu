@@ -900,10 +900,6 @@ namespace osu.Game.Screens.Play
             // already resuming
             && !IsResuming;
 
-        public void Stop() => GameplayClockContainer.Stop();
-
-        public void Start() => GameplayClockContainer.Start();
-
         public bool Pause()
         {
             if (!pausingSupportedByCurrentState) return false;
