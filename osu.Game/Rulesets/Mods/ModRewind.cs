@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.Linq;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics.Sprites;
@@ -12,7 +13,7 @@ using osu.Game.Screens.Play;
 
 namespace osu.Game.Rulesets.Mods
 {
-    public class ModRewind : ModNoFail, IUpdatableByPlayfield, IApplicableToPlayer, IApplicableToScoreProcessor
+    public class ModRewind : ModBlockFail, IUpdatableByPlayfield, IApplicableToPlayer, IApplicableToScoreProcessor
     {
         public override string Name => "Rewind";
 
@@ -25,6 +26,8 @@ namespace osu.Game.Rulesets.Mods
         public override string Description => "It's rewind time.";
 
         public override double ScoreMultiplier => 1;
+
+        public override Type[] IncompatibleMods => new[] { typeof(ModNoFail), typeof(ModSuddenDeath), typeof(ModPerfect), typeof(ModAutoplay) };
 
         public override bool ValidForMultiplayer => false;
 
