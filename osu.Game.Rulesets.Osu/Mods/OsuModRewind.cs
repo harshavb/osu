@@ -9,7 +9,6 @@ namespace osu.Game.Rulesets.Osu.Mods
 {
     public class OsuModRewind : ModRewind
     {
-        public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[] { typeof(OsuModBlinds), typeof(OsuModMagnetised), typeof(OsuModRepel) }).ToArray();
-
+        public override Type[] IncompatibleMods => base.IncompatibleMods.Concat(new[] { typeof(OsuModMagnetised), typeof(OsuModRepel) }).ToArray();
     }
 }
