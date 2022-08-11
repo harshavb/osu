@@ -14,15 +14,15 @@ namespace osu.Game.Rulesets.Mods
 {
     public class ModRewind : ModNoFail, IUpdatableByPlayfield, IApplicableToPlayer, IApplicableToScoreProcessor
     {
-        public override string Name => "Practice";
+        public override string Name => "Rewind";
 
-        public override string Acronym => "PR";
+        public override string Acronym => "RE";
 
-        public override IconUsage? Icon => FontAwesome.Solid.ArrowAltCircleRight; // temp
+        public override IconUsage? Icon => FontAwesome.Solid.ArrowLeft; // temp
 
-        public override ModType Type => ModType.Automation;
+        public override ModType Type => ModType.Fun;
 
-        public override string Description => "You'll get that FC.";
+        public override string Description => "It's rewind time.";
 
         public override double ScoreMultiplier => 1;
 
@@ -42,7 +42,7 @@ namespace osu.Game.Rulesets.Mods
             Precision = 0.1
         };
 
-        [SettingSource("Invulnerable Time", "The amount of time (in seconds) to prevent rewinding when a miss occurs")]
+        [SettingSource("Grace Period", "The amount of time (in seconds) to prevent rewinding after a miss occurs")]
         public BindableNumber<double> GracePeriod { get; } = new BindableDouble
         {
             MinValue = 1,
@@ -64,17 +64,17 @@ namespace osu.Game.Rulesets.Mods
 
         public void ApplyToPlayer(Player player)
         {
-            Missed.BindValueChanged( missed =>
+            Missed.BindValueChanged(missed =>
             {
                 // if (player.Time.Current - RewindTime.Value >= 0) does not work
                 // if (player.GameplayClockContainer.CurrentTime - RewindTime.Value >= 0) works if GameplayClockContainer.CurrentTime is exposed
-                if (CurrentTime >= invulnerableTime)
+                if (missed.NewValue && CurrentTime >= invulnerableTime)
                 {
                     if (CurrentTime - (RewindTime.Value * 1000) >= 0)
                     {
                         // player.Seek(player.GameplayClockContainer.CurrentTime - RewindTime.Value);
-                        player.Seek(CurrentTime - (RewindTime.Value * 1000));
                         invulnerableTime = (CurrentTime - RewindTime.Value * 1000) + (GracePeriod.Value * 1000);
+                        player.Seek(CurrentTime - (RewindTime.Value * 1000));
                     }
                     else
                     {

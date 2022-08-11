@@ -128,7 +128,7 @@ namespace osu.Game.Screens.Play
 
         public bool LoadedBeatmapSuccessfully => DrawableRuleset?.Objects.Any() == true;
 
-        public GameplayClockContainer GameplayClockContainer { get; private set; }
+        protected GameplayClockContainer GameplayClockContainer { get; private set; }
 
         public DimmableStoryboard DimmableStoryboard { get; private set; }
 
@@ -899,6 +899,10 @@ namespace osu.Game.Screens.Play
             && !GameplayState.HasFailed
             // already resuming
             && !IsResuming;
+
+        public void Stop() => GameplayClockContainer.Stop();
+
+        public void Start() => GameplayClockContainer.Start();
 
         public bool Pause()
         {
