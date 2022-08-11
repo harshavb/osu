@@ -182,6 +182,7 @@ namespace osu.Game.Rulesets.Osu
                         new OsuModRelax(),
                         new OsuModAutopilot(),
                         new OsuModSpunOut(),
+                        new OsuModPractice()
                     };
 
                 case ModType.Fun:
@@ -199,7 +200,6 @@ namespace osu.Game.Rulesets.Osu
                         new OsuModNoScope(),
                         new MultiMod(new OsuModMagnetised(), new OsuModRepel()),
                         new ModAdaptiveSpeed(),
-                        new OsuModPractice()
                     };
 
                 case ModType.System:
