@@ -105,7 +105,7 @@ namespace osu.Game.Tests.Visual.UserInterface
                 }
             });
 
-            AddStep("set filter", () => setFilter(mod => mod.Name.Contains("Wind", StringComparison.CurrentCultureIgnoreCase)));
+            AddStep("set filter", () => setFilter(mod => mod.Name.Contains("Wind", StringComparison.CurrentCulture)));
             AddUntilStep("two panels visible", () => column.ChildrenOfType<ModPanel>().Count(panel => !panel.Filtered.Value) == 2);
 
             clickToggle();
@@ -116,7 +116,7 @@ namespace osu.Game.Tests.Visual.UserInterface
             AddUntilStep("all panels visible", () => column.ChildrenOfType<ModPanel>().All(panel => !panel.Filtered.Value));
             AddAssert("checkbox not selected", () => !column.ChildrenOfType<OsuCheckbox>().Single().Current.Value);
 
-            AddStep("set filter", () => setFilter(mod => mod.Name.Contains("Wind", StringComparison.CurrentCultureIgnoreCase)));
+            AddStep("set filter", () => setFilter(mod => mod.Name.Contains("Wind", StringComparison.CurrentCulture)));
             AddUntilStep("two panels visible", () => column.ChildrenOfType<ModPanel>().Count(panel => !panel.Filtered.Value) == 2);
             AddAssert("checkbox selected", () => column.ChildrenOfType<OsuCheckbox>().Single().Current.Value);
 
