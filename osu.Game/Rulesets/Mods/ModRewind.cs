@@ -87,11 +87,13 @@ namespace osu.Game.Rulesets.Mods
                     }
                 }
 
-                // this seems like the only way to prevent multiple subsequent rewinds without causing any
+                // This seems like the only way to prevent multiple subsequent rewinds without causing any
                 // real problems... Since there's no way to tell when Seek() ends and Seek() isn't blocking,
                 // and since (i think) accuracy and the last HitEvent constantly change as Seek() runs, afaik
                 // there will always be a race condition.
-                // breaks if Seek() lasts longer than 0.5 seconds...
+                // I believe one way this could be fixed is if there is another way to detect combo breaks that
+                // isn't affected by Seek(), but I can't figure out any.
+                // This fix breaks if Seek() lasts longer than 0.5 seconds, I think...
                 Task.Run(async () =>
                 {
                     await Task.Delay(500);
