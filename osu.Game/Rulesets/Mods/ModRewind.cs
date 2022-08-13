@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using osu.Framework.Bindables;
-using osu.Framework.Extensions;
 using osu.Framework.Graphics.Sprites;
 using osu.Game.Configuration;
 using osu.Game.Rulesets.Scoring;
@@ -79,15 +78,18 @@ namespace osu.Game.Rulesets.Mods
                     }
                     else
                     {
-                        player.Seek(0);
                         invulnerableTime = GracePeriod.Value * 1000;
+                        player.Seek(0);
                     }
-                }
 
-                // VERY BAD temporary race condition fix
-                // breaks if seek time lasts longer than 0.5 seconds
-                Task.Delay(500).WaitSafely();
-                Missed.Value = true;
+                    // VERY BAD temporary race condition fix
+                    // breaks if seek time lasts longer than 0.5 seconds
+                    Task.Run(async () =>
+                    {
+                        await Task.Delay(500);
+                        Missed.Value = false;
+                    });
+                }
             };
         }
 
