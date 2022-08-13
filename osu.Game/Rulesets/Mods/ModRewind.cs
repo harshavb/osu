@@ -63,14 +63,12 @@ namespace osu.Game.Rulesets.Mods
 
         public void ApplyToPlayer(Player player)
         {
-            Missed.BindValueChanged(missed =>
+            Missed.ValueChanged += missed =>
             {
                 // if (player.Time.Current - RewindTime.Value >= 0) does not work
                 // if (player.GameplayClockContainer.CurrentTime - RewindTime.Value >= 0) works if GameplayClockContainer.CurrentTime is exposed
                 if (missed.NewValue && CurrentTime >= invulnerableTime)
                 {
-                    Missed.Value = false;
-
                     if (CurrentTime - (RewindTime.Value * 1000) >= 0)
                     {
                         // player.Seek(player.GameplayClockContainer.CurrentTime - RewindTime.Value);
@@ -83,7 +81,9 @@ namespace osu.Game.Rulesets.Mods
                         invulnerableTime = GracePeriod.Value * 1000;
                     }
                 }
-            });
+
+                Missed.Value = false;
+            };
         }
 
         public virtual void Update(Playfield playfield)
@@ -94,7 +94,6 @@ namespace osu.Game.Rulesets.Mods
 
         public void ApplyToScoreProcessor(ScoreProcessor scoreProcessor)
         {
-            // possible race condition if two combo breaks occur in quick succession (since Missed.Value may not have been updated yet)
             scoreProcessor.Accuracy.BindValueChanged(acc => Missed.Value = scoreProcessor.HitEvents.LastOrDefault().Result.BreaksCombo());
         }
     }
