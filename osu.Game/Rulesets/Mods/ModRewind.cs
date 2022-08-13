@@ -20,7 +20,7 @@ namespace osu.Game.Rulesets.Mods
 
         public override string Acronym => "RE";
 
-        public override IconUsage? Icon => FontAwesome.Solid.ArrowLeft; // temp
+        public override IconUsage? Icon => FontAwesome.Solid.Clock; // temp
 
         public override ModType Type => ModType.Fun;
 
