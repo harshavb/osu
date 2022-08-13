@@ -60,6 +60,8 @@ namespace osu.Game.Rulesets.Mods
 
         protected double CurrentTime;
 
+        private BindableNumber<double> accuracy = new BindableDouble();
+
         public ScoreRank AdjustRank(ScoreRank rank, double accuracy) => rank;
 
         public void ApplyToPlayer(Player player)
@@ -101,7 +103,8 @@ namespace osu.Game.Rulesets.Mods
 
         public void ApplyToScoreProcessor(ScoreProcessor scoreProcessor)
         {
-            scoreProcessor.Accuracy.BindValueChanged(acc => Missed.Value = scoreProcessor.HitEvents.LastOrDefault().Result.BreaksCombo());
+            accuracy = scoreProcessor.Accuracy.GetBoundCopy(); // making local copy per https://github.com/ppy/osu-framework/wiki/Bindable-Flow#binding-bindablets-together
+            accuracy.BindValueChanged(acc => Missed.Value = scoreProcessor.HitEvents.LastOrDefault().Result.BreaksCombo());
         }
     }
 }
