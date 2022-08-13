@@ -87,8 +87,11 @@ namespace osu.Game.Rulesets.Mods
                     }
                 }
 
-                // VERY BAD temporary race condition (or at least I think it's a race condition) fix
-                // breaks if seek lasts longer than 0.5 seconds
+                // this seems like the only way to prevent multiple subsequent rewinds without causing any
+                // real problems... Since there's no way to tell when Seek() ends and Seek() isn't blocking,
+                // and since (i think) accuracy and the last HitEvent constantly change as Seek() runs, afaik
+                // there will always be a race condition.
+                // breaks if Seek() lasts longer than 0.5 seconds...
                 Task.Run(async () =>
                 {
                     await Task.Delay(500);
