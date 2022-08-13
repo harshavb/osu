@@ -93,7 +93,7 @@ namespace osu.Game.Rulesets.Mods
                 // there will always be a race condition for whether CurrentTime < invulnerableTime.
                 // I believe one way this could be fixed is if there is another way to detect combo breaks that
                 // isn't affected by Seek(), but I can't figure out any.
-                // This fix breaks if CurrentTime >= invulnerable Time after approximately 500ms, which should
+                // This fix breaks if CurrentTime >= invulnerableTime after approximately 500ms, which should
                 // only occur if Seek() takes a really long time to complete.
                 Task.Run(async () =>
                 {
