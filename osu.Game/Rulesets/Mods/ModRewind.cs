@@ -84,8 +84,8 @@ namespace osu.Game.Rulesets.Mods
                         player.Seek(0);
                     }
 
-                    // VERY BAD temporary race condition fix
-                    // breaks if seek time lasts longer than 0.5 seconds
+                    // VERY BAD temporary race condition fix (that doesn't even work)
+                    // even if it did fix it, it would break if the seek time lasted longer than 0.5 seconds
                     Task.Run(async () =>
                     {
                         await Task.Delay(500);
