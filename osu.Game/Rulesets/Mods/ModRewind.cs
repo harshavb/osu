@@ -62,6 +62,8 @@ namespace osu.Game.Rulesets.Mods
 
         private BindableNumber<double> accuracy = new BindableDouble();
 
+        private bool running;
+
         public ScoreRank AdjustRank(ScoreRank rank, double accuracy) => rank;
 
         public void ApplyToPlayer(Player player)
@@ -70,7 +72,7 @@ namespace osu.Game.Rulesets.Mods
             {
                 // if (player.Time.Current - RewindTime.Value >= 0) does not work
                 // if (player.GameplayClockContainer.CurrentTime - RewindTime.Value >= 0) works if GameplayClockContainer.CurrentTime is exposed
-                if (missed.NewValue && CurrentTime >= invulnerableTime)
+                if (CurrentTime >= invulnerableTime)
                 {
                     if (CurrentTime - (RewindTime.Value * 1000) >= 0)
                     {
@@ -83,15 +85,15 @@ namespace osu.Game.Rulesets.Mods
                         invulnerableTime = GracePeriod.Value * 1000;
                         player.Seek(0);
                     }
-
-                    // VERY BAD temporary race condition fix (that doesn't even work)
-                    // even if it did fix it, it would break if the seek time lasted longer than 0.5 seconds
-                    Task.Run(async () =>
-                    {
-                        await Task.Delay(500);
-                        Missed.Value = false;
-                    });
                 }
+
+                // VERY BAD temporary race condition fix
+                // breaks if seek time lasts longer than 0.5 seconds
+                Task.Run(async () =>
+                {
+                    await Task.Delay(500);
+                    running = false;
+                });
             };
         }
 
@@ -104,7 +106,17 @@ namespace osu.Game.Rulesets.Mods
         public void ApplyToScoreProcessor(ScoreProcessor scoreProcessor)
         {
             accuracy = scoreProcessor.Accuracy.GetBoundCopy(); // making local copy per https://github.com/ppy/osu-framework/wiki/Bindable-Flow#binding-bindablets-together
-            accuracy.BindValueChanged(acc => Missed.Value = scoreProcessor.HitEvents.LastOrDefault().Result.BreaksCombo());
+            accuracy.BindValueChanged(acc =>
+            {
+                if (!running)
+                {
+                    if (scoreProcessor.HitEvents.LastOrDefault().Result.BreaksCombo())
+                    {
+                        running = true;
+                        Missed.TriggerChange();
+                    }
+                }
+            });
         }
     }
 }
