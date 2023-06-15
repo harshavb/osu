@@ -25,7 +25,7 @@ using osuTK.Graphics;
 
 namespace osu.Game.Overlays.Mods
 {
-    public class ModColumn : ModSelectColumn
+    public partial class ModColumn : ModSelectColumn
     {
         public readonly ModType ModType;
 
@@ -66,7 +66,10 @@ namespace osu.Game.Overlays.Mods
         private IModHotkeyHandler hotkeyHandler = null!;
 
         private Task? latestLoadTask;
-        internal bool ItemsLoaded => latestLoadTask?.IsCompleted == true;
+        private ICollection<ModPanel>? latestLoadedPanels;
+        internal bool ItemsLoaded => latestLoadTask?.IsCompleted == true && latestLoadedPanels?.All(panel => panel.Parent != null) == true;
+
+        public override bool IsPresent => base.IsPresent || Scheduler.HasPendingTasks;
 
         public ModColumn(ModType modType, bool allowIncompatibleSelection)
         {
@@ -130,7 +133,8 @@ namespace osu.Game.Overlays.Mods
         {
             cancellationTokenSource?.Cancel();
 
-            var panels = availableMods.Select(mod => CreateModPanel(mod).With(panel => panel.Shear = Vector2.Zero));
+            var panels = availableMods.Select(mod => CreateModPanel(mod).With(panel => panel.Shear = Vector2.Zero)).ToArray();
+            latestLoadedPanels = panels;
 
             latestLoadTask = LoadComponentsAsync(panels, loaded =>
             {
@@ -172,7 +176,7 @@ namespace osu.Game.Overlays.Mods
                     dequeuedAction();
 
                     // each time we play an animation, we decrease the time until the next animation (to ramp the visual and audible elements).
-                    selectionDelay = Math.Max(30, selectionDelay * 0.8f);
+                    selectionDelay = Math.Max(ModSelectPanel.SAMPLE_PLAYBACK_DELAY, selectionDelay * 0.8f);
                     lastSelection = Time.Current;
                 }
                 else
@@ -215,7 +219,7 @@ namespace osu.Game.Overlays.Mods
                 dequeuedAction();
         }
 
-        private class ToggleAllCheckbox : OsuCheckbox
+        private partial class ToggleAllCheckbox : OsuCheckbox
         {
             private Color4 accentColour;
 

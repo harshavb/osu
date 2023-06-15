@@ -40,5 +40,9 @@ namespace osu.Game.Tournament.Models
             MinValue = 3,
             MaxValue = 4,
         };
+
+        public Bindable<bool> AutoProgressScreens = new BindableBool(true);
+
+        public Bindable<bool> SplitMapPoolByMods = new BindableBool(true);
     }
 }

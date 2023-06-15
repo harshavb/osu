@@ -25,7 +25,7 @@ namespace osu.Game.Rulesets.Mania.Edit
     /// <summary>
     /// A grid which displays coloured beat divisor lines in proximity to the selection or placement cursor.
     /// </summary>
-    public class ManiaBeatSnapGrid : Component
+    public partial class ManiaBeatSnapGrid : Component
     {
         private const double visible_range = 750;
 
@@ -129,7 +129,7 @@ namespace osu.Game.Rulesets.Mania.Edit
                 }
 
                 Color4 colour = BindableBeatDivisor.GetColourFor(
-                    BindableBeatDivisor.GetDivisorForBeatIndex(Math.Max(1, beat), beatDivisor.Value), colours);
+                    BindableBeatDivisor.GetDivisorForBeatIndex(beat, beatDivisor.Value), colours);
 
                 foreach (var grid in grids)
                 {
@@ -166,7 +166,7 @@ namespace osu.Game.Rulesets.Mania.Edit
             }
         }
 
-        private class DrawableGridLine : DrawableHitObject
+        private partial class DrawableGridLine : DrawableHitObject
         {
             [Resolved]
             private IScrollingInfo scrollingInfo { get; set; }

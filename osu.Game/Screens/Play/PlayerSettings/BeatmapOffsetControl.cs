@@ -18,6 +18,7 @@ using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Localisation;
 using osu.Game.Overlays.Settings;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
 using osu.Game.Screens.Ranking.Statistics;
@@ -25,14 +26,12 @@ using osuTK;
 
 namespace osu.Game.Screens.Play.PlayerSettings
 {
-    public class BeatmapOffsetControl : CompositeDrawable
+    public partial class BeatmapOffsetControl : CompositeDrawable
     {
-        public Bindable<ScoreInfo> ReferenceScore { get; } = new Bindable<ScoreInfo>();
+        public Bindable<ScoreInfo?> ReferenceScore { get; } = new Bindable<ScoreInfo?>();
 
         public BindableDouble Current { get; } = new BindableDouble
         {
-            Default = 0,
-            Value = 0,
             MinValue = -50,
             MaxValue = 50,
             Precision = 0.1,
@@ -89,11 +88,11 @@ namespace osu.Game.Screens.Play.PlayerSettings
             };
         }
 
-        public class OffsetSliderBar : PlayerSliderBar<double>
+        public partial class OffsetSliderBar : PlayerSliderBar<double>
         {
             protected override Drawable CreateControl() => new CustomSliderBar();
 
-            protected class CustomSliderBar : SliderBar
+            protected partial class CustomSliderBar : SliderBar
             {
                 public override LocalisableString TooltipText =>
                     Current.Value == 0
@@ -178,14 +177,14 @@ namespace osu.Game.Screens.Play.PlayerSettings
             }
         }
 
-        private void scoreChanged(ValueChangedEvent<ScoreInfo> score)
+        private void scoreChanged(ValueChangedEvent<ScoreInfo?> score)
         {
             referenceScoreContainer.Clear();
 
             if (score.NewValue == null)
                 return;
 
-            if (score.NewValue.Mods.Any(m => !m.UserPlayable))
+            if (score.NewValue.Mods.Any(m => !m.UserPlayable || m is IHasNoTimedInputs))
                 return;
 
             var hitEvents = score.NewValue.HitEvents;

@@ -1,8 +1,6 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using System;
 using System.Globalization;
 using System.Linq;
@@ -13,23 +11,24 @@ using osu.Framework.Localisation;
 using osu.Game.Beatmaps;
 using osu.Game.Graphics.UserInterfaceV2;
 using osuTK;
+using osu.Game.Localisation;
 
 namespace osu.Game.Screens.Edit.Setup
 {
-    internal class DesignSection : SetupSection
+    internal partial class DesignSection : SetupSection
     {
-        protected LabelledSwitchButton EnableCountdown;
+        protected LabelledSwitchButton EnableCountdown = null!;
 
-        protected FillFlowContainer CountdownSettings;
-        protected LabelledEnumDropdown<CountdownType> CountdownSpeed;
-        protected LabelledNumberBox CountdownOffset;
+        protected FillFlowContainer CountdownSettings = null!;
+        protected LabelledEnumDropdown<CountdownType> CountdownSpeed = null!;
+        protected LabelledNumberBox CountdownOffset = null!;
 
-        private LabelledSwitchButton widescreenSupport;
-        private LabelledSwitchButton epilepsyWarning;
-        private LabelledSwitchButton letterboxDuringBreaks;
-        private LabelledSwitchButton samplesMatchPlaybackRate;
+        private LabelledSwitchButton widescreenSupport = null!;
+        private LabelledSwitchButton epilepsyWarning = null!;
+        private LabelledSwitchButton letterboxDuringBreaks = null!;
+        private LabelledSwitchButton samplesMatchPlaybackRate = null!;
 
-        public override LocalisableString Title => "Design";
+        public override LocalisableString Title => EditorSetupStrings.DesignHeader;
 
         [BackgroundDependencyLoader]
         private void load()
@@ -38,9 +37,9 @@ namespace osu.Game.Screens.Edit.Setup
             {
                 EnableCountdown = new LabelledSwitchButton
                 {
-                    Label = "Enable countdown",
+                    Label = EditorSetupStrings.EnableCountdown,
                     Current = { Value = Beatmap.BeatmapInfo.Countdown != CountdownType.None },
-                    Description = "If enabled, an \"Are you ready? 3, 2, 1, GO!\" countdown will be inserted at the beginning of the beatmap, assuming there is enough time to do so."
+                    Description = EditorSetupStrings.CountdownDescription
                 },
                 CountdownSettings = new FillFlowContainer
                 {
@@ -52,41 +51,41 @@ namespace osu.Game.Screens.Edit.Setup
                     {
                         CountdownSpeed = new LabelledEnumDropdown<CountdownType>
                         {
-                            Label = "Countdown speed",
+                            Label = EditorSetupStrings.CountdownSpeed,
                             Current = { Value = Beatmap.BeatmapInfo.Countdown != CountdownType.None ? Beatmap.BeatmapInfo.Countdown : CountdownType.Normal },
-                            Items = Enum.GetValues(typeof(CountdownType)).Cast<CountdownType>().Where(type => type != CountdownType.None)
+                            Items = Enum.GetValues<CountdownType>().Where(type => type != CountdownType.None)
                         },
                         CountdownOffset = new LabelledNumberBox
                         {
-                            Label = "Countdown offset",
+                            Label = EditorSetupStrings.CountdownOffset,
                             Current = { Value = Beatmap.BeatmapInfo.CountdownOffset.ToString() },
-                            Description = "If the countdown sounds off-time, use this to make it appear one or more beats early.",
+                            Description = EditorSetupStrings.CountdownOffsetDescription,
                         }
                     }
                 },
                 Empty(),
                 widescreenSupport = new LabelledSwitchButton
                 {
-                    Label = "Widescreen support",
-                    Description = "Allows storyboards to use the full screen space, rather than be confined to a 4:3 area.",
+                    Label = EditorSetupStrings.WidescreenSupport,
+                    Description = EditorSetupStrings.WidescreenSupportDescription,
                     Current = { Value = Beatmap.BeatmapInfo.WidescreenStoryboard }
                 },
                 epilepsyWarning = new LabelledSwitchButton
                 {
-                    Label = "Epilepsy warning",
-                    Description = "Recommended if the storyboard or video contain scenes with rapidly flashing colours.",
+                    Label = EditorSetupStrings.EpilepsyWarning,
+                    Description = EditorSetupStrings.EpilepsyWarningDescription,
                     Current = { Value = Beatmap.BeatmapInfo.EpilepsyWarning }
                 },
                 letterboxDuringBreaks = new LabelledSwitchButton
                 {
-                    Label = "Letterbox during breaks",
-                    Description = "Adds horizontal letterboxing to give a cinematic look during breaks.",
+                    Label = EditorSetupStrings.LetterboxDuringBreaks,
+                    Description = EditorSetupStrings.LetterboxDuringBreaksDescription,
                     Current = { Value = Beatmap.BeatmapInfo.LetterboxInBreaks }
                 },
                 samplesMatchPlaybackRate = new LabelledSwitchButton
                 {
-                    Label = "Samples match playback rate",
-                    Description = "When enabled, all samples will speed up or slow down when rate-changing mods are enabled.",
+                    Label = EditorSetupStrings.SamplesMatchPlaybackRate,
+                    Description = EditorSetupStrings.SamplesMatchPlaybackRateDescription,
                     Current = { Value = Beatmap.BeatmapInfo.SamplesMatchPlaybackRate }
                 }
             };
@@ -126,6 +125,8 @@ namespace osu.Game.Screens.Edit.Setup
             Beatmap.BeatmapInfo.EpilepsyWarning = epilepsyWarning.Current.Value;
             Beatmap.BeatmapInfo.LetterboxInBreaks = letterboxDuringBreaks.Current.Value;
             Beatmap.BeatmapInfo.SamplesMatchPlaybackRate = samplesMatchPlaybackRate.Current.Value;
+
+            Beatmap.SaveState();
         }
     }
 }

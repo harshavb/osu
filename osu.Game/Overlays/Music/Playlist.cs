@@ -13,7 +13,7 @@ using osuTK;
 
 namespace osu.Game.Overlays.Music
 {
-    public class Playlist : OsuRearrangeableListContainer<Live<BeatmapSetInfo>>
+    public partial class Playlist : OsuRearrangeableListContainer<Live<BeatmapSetInfo>>
     {
         public Action<Live<BeatmapSetInfo>>? RequestSelection;
 
@@ -25,6 +25,12 @@ namespace osu.Game.Overlays.Music
         {
             get => base.Padding;
             set => base.Padding = value;
+        }
+
+        protected override void OnItemsChanged()
+        {
+            base.OnItemsChanged();
+            Filter(currentCriteria);
         }
 
         public void Filter(FilterCriteria criteria)
@@ -44,12 +50,12 @@ namespace osu.Game.Overlays.Music
 
         public Live<BeatmapSetInfo>? FirstVisibleSet => Items.FirstOrDefault(i => ((PlaylistItem)ItemMap[i]).MatchingFilter);
 
-        protected override OsuRearrangeableListItem<Live<BeatmapSetInfo>> CreateOsuDrawable(Live<BeatmapSetInfo> item) => new PlaylistItem(item)
-        {
-            InSelectedCollection = currentCriteria.Collection?.PerformRead(c => item.Value.Beatmaps.Select(b => b.MD5Hash).Any(c.BeatmapMD5Hashes.Contains)) != false,
-            SelectedSet = { BindTarget = SelectedSet },
-            RequestSelection = set => RequestSelection?.Invoke(set)
-        };
+        protected override OsuRearrangeableListItem<Live<BeatmapSetInfo>> CreateOsuDrawable(Live<BeatmapSetInfo> item) =>
+            new PlaylistItem(item)
+            {
+                SelectedSet = { BindTarget = SelectedSet },
+                RequestSelection = set => RequestSelection?.Invoke(set)
+            };
 
         protected override FillFlowContainer<RearrangeableListItem<Live<BeatmapSetInfo>>> CreateListFillFlowContainer() => new SearchContainer<RearrangeableListItem<Live<BeatmapSetInfo>>>
         {

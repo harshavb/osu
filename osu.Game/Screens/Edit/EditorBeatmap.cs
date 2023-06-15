@@ -20,8 +20,19 @@ using osu.Game.Skinning;
 
 namespace osu.Game.Screens.Edit
 {
-    public class EditorBeatmap : TransactionalCommitComponent, IBeatmap, IBeatSnapProvider
+    public partial class EditorBeatmap : TransactionalCommitComponent, IBeatmap, IBeatSnapProvider
     {
+        /// <summary>
+        /// Will become <c>true</c> when a new update is queued, and <c>false</c> when all updates have been applied.
+        /// </summary>
+        /// <remarks>
+        /// This is intended to be used to avoid performing operations (like playback of samples)
+        /// while mutating hitobjects.
+        /// </remarks>
+        public IBindable<bool> UpdateInProgress => updateInProgress;
+
+        private readonly BindableBool updateInProgress = new BindableBool();
+
         /// <summary>
         /// Invoked when a <see cref="HitObject"/> is added to this <see cref="EditorBeatmap"/>.
         /// </summary>
@@ -36,6 +47,15 @@ namespace osu.Game.Screens.Edit
         /// Invoked when a <see cref="HitObject"/> is updated.
         /// </summary>
         public event Action<HitObject> HitObjectUpdated;
+
+        /// <summary>
+        /// Invoked after any state changes occurred which triggered a beatmap reprocess via an <see cref="IBeatmapProcessor"/>.
+        /// </summary>
+        /// <remarks>
+        /// Beatmap processing may change the order of hitobjects. This event gives external components a chance to handle any changes
+        /// not covered by the <see cref="HitObjectAdded"/> / <see cref="HitObjectUpdated"/> / <see cref="HitObjectRemoved"/> events.
+        /// </remarks>
+        public event Action BeatmapReprocessed;
 
         /// <summary>
         /// All currently selected <see cref="HitObject"/>s.
@@ -66,6 +86,8 @@ namespace osu.Game.Screens.Edit
         [Resolved]
         private EditorClock editorClock { get; set; }
 
+        public BindableInt PreviewTime { get; }
+
         private readonly IBeatmapProcessor beatmapProcessor;
 
         private readonly Dictionary<HitObject, Bindable<double>> startTimeBindables = new Dictionary<HitObject, Bindable<double>>();
@@ -78,12 +100,23 @@ namespace osu.Game.Screens.Edit
             this.beatmapInfo = beatmapInfo ?? playableBeatmap.BeatmapInfo;
 
             if (beatmapSkin is Skin skin)
+            {
                 BeatmapSkin = new EditorBeatmapSkin(skin);
+                BeatmapSkin.BeatmapSkinChanged += SaveState;
+            }
 
             beatmapProcessor = playableBeatmap.BeatmapInfo.Ruleset.CreateInstance().CreateBeatmapProcessor(PlayableBeatmap);
 
             foreach (var obj in HitObjects)
                 trackStartTime(obj);
+
+            PreviewTime = new BindableInt(BeatmapInfo.Metadata.PreviewTime);
+            PreviewTime.BindValueChanged(s =>
+            {
+                BeginChange();
+                BeatmapInfo.Metadata.PreviewTime = s.NewValue;
+                EndChange();
+            });
         }
 
         /// <summary>
@@ -225,6 +258,8 @@ namespace osu.Game.Screens.Edit
         {
             // updates are debounced regardless of whether a batch is active.
             batchPendingUpdates.Add(hitObject);
+
+            updateInProgress.Value = true;
         }
 
         /// <summary>
@@ -234,6 +269,8 @@ namespace osu.Game.Screens.Edit
         {
             foreach (var h in HitObjects)
                 batchPendingUpdates.Add(h);
+
+            updateInProgress.Value = true;
         }
 
         /// <summary>
@@ -277,7 +314,7 @@ namespace osu.Game.Screens.Edit
         /// <param name="index">The index of the <see cref="HitObject"/> to remove.</param>
         public void RemoveAt(int index)
         {
-            var hitObject = (HitObject)mutableHitObjects[index];
+            HitObject hitObject = (HitObject)mutableHitObjects[index]!;
 
             mutableHitObjects.RemoveAt(index);
 
@@ -313,6 +350,8 @@ namespace osu.Game.Screens.Edit
 
             beatmapProcessor?.PostProcess();
 
+            BeatmapReprocessed?.Invoke();
+
             // callbacks may modify the lists so let's be safe about it
             var deletes = batchPendingDeletes.ToArray();
             batchPendingDeletes.Clear();
@@ -323,9 +362,13 @@ namespace osu.Game.Screens.Edit
             var updates = batchPendingUpdates.ToArray();
             batchPendingUpdates.Clear();
 
+            foreach (var h in deletes) SelectedHitObjects.Remove(h);
+
             foreach (var h in deletes) HitObjectRemoved?.Invoke(h);
             foreach (var h in inserts) HitObjectAdded?.Invoke(h);
             foreach (var h in updates) HitObjectUpdated?.Invoke(h);
+
+            updateInProgress.Value = false;
         }
 
         /// <summary>

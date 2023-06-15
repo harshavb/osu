@@ -9,7 +9,7 @@ using osu.Game.Resources.Localisation.Web;
 
 namespace osu.Game.Database
 {
-    public class TooManyDownloadsNotification : SimpleNotification
+    public partial class TooManyDownloadsNotification : SimpleNotification
     {
         public TooManyDownloadsNotification()
         {
@@ -20,7 +20,7 @@ namespace osu.Game.Database
         [BackgroundDependencyLoader]
         private void load(OsuColour colours)
         {
-            IconBackground.Colour = colours.RedDark;
+            IconContent.Colour = colours.RedDark;
         }
     }
 }

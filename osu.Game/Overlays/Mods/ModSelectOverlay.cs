@@ -28,7 +28,7 @@ using osuTK;
 
 namespace osu.Game.Overlays.Mods
 {
-    public abstract class ModSelectOverlay : ShearedOverlayContainer, ISamplePlaybackDisabler
+    public abstract partial class ModSelectOverlay : ShearedOverlayContainer, ISamplePlaybackDisabler
     {
         public const int BUTTON_WIDTH = 200;
 
@@ -87,7 +87,7 @@ namespace osu.Game.Overlays.Mods
         {
             if (AllowCustomisation)
             {
-                yield return customisationButton = new ShearedToggleButton(BUTTON_WIDTH)
+                yield return CustomisationButton = new ShearedToggleButton(BUTTON_WIDTH)
                 {
                     Text = ModSelectOverlayStrings.ModCustomisation,
                     Active = { BindTarget = customisationVisible }
@@ -107,11 +107,11 @@ namespace osu.Game.Overlays.Mods
         private ColumnScrollContainer columnScroll = null!;
         private ColumnFlowContainer columnFlow = null!;
         private FillFlowContainer<ShearedButton> footerButtonFlow = null!;
-        private ShearedButton backButton = null!;
 
         private DifficultyMultiplierDisplay? multiplierDisplay;
 
-        private ShearedToggleButton? customisationButton;
+        protected ShearedButton BackButton { get; private set; } = null!;
+        protected ShearedToggleButton? CustomisationButton { get; private set; }
 
         private Sample? columnAppearSample;
 
@@ -153,7 +153,7 @@ namespace osu.Game.Overlays.Mods
                     {
                         Padding = new MarginPadding
                         {
-                            Top = (ShowTotalMultiplier ? DifficultyMultiplierDisplay.HEIGHT : 0) + PADDING,
+                            Top = (ShowTotalMultiplier ? ModsEffectDisplay.HEIGHT : 0) + PADDING,
                             Bottom = PADDING
                         },
                         RelativeSizeAxes = Axes.Both,
@@ -191,7 +191,7 @@ namespace osu.Game.Overlays.Mods
                     Anchor = Anchor.TopRight,
                     Origin = Anchor.TopRight,
                     AutoSizeAxes = Axes.X,
-                    Height = DifficultyMultiplierDisplay.HEIGHT,
+                    Height = ModsEffectDisplay.HEIGHT,
                     Margin = new MarginPadding { Horizontal = 100 },
                     Child = multiplierDisplay = new DifficultyMultiplierDisplay
                     {
@@ -214,7 +214,7 @@ namespace osu.Game.Overlays.Mods
                     Horizontal = 70
                 },
                 Spacing = new Vector2(10),
-                ChildrenEnumerable = CreateFooterButtons().Prepend(backButton = new ShearedButton(BUTTON_WIDTH)
+                ChildrenEnumerable = CreateFooterButtons().Prepend(BackButton = new ShearedButton(BUTTON_WIDTH)
                 {
                     Text = CommonStrings.Back,
                     Action = Hide,
@@ -242,17 +242,21 @@ namespace osu.Game.Overlays.Mods
             if (AllowCustomisation)
                 ((IBindable<IReadOnlyList<Mod>>)modSettingsArea.SelectedMods).BindTo(SelectedMods);
 
-            SelectedMods.BindValueChanged(val =>
+            SelectedMods.BindValueChanged(_ =>
             {
-                modSettingChangeTracker?.Dispose();
-
                 updateMultiplier();
-                updateCustomisation(val);
                 updateFromExternalSelection();
+                updateCustomisation();
+
+                modSettingChangeTracker?.Dispose();
 
                 if (AllowCustomisation)
                 {
-                    modSettingChangeTracker = new ModSettingChangeTracker(val.NewValue);
+                    // Importantly, use SelectedMods.Value here (and not the ValueChanged NewValue) as the latter can
+                    // potentially be stale, due to complexities in the way change trackers work.
+                    //
+                    // See https://github.com/ppy/osu/pull/23284#issuecomment-1529056988
+                    modSettingChangeTracker = new ModSettingChangeTracker(SelectedMods.Value);
                     modSettingChangeTracker.SettingChanged += _ => updateMultiplier();
                 }
             }, true);
@@ -356,25 +360,26 @@ namespace osu.Game.Overlays.Mods
             multiplierDisplay.Current.Value = multiplier;
         }
 
-        private void updateCustomisation(ValueChangedEvent<IReadOnlyList<Mod>> valueChangedEvent)
+        private void updateCustomisation()
         {
-            if (customisationButton == null)
+            if (CustomisationButton == null)
                 return;
 
-            bool anyCustomisableMod = false;
-            bool anyModWithRequiredCustomisationAdded = false;
+            bool anyCustomisableModActive = false;
+            bool anyModPendingConfiguration = false;
 
-            foreach (var mod in SelectedMods.Value)
+            foreach (var modState in allAvailableMods)
             {
-                anyCustomisableMod |= mod.GetSettingsSourceProperties().Any();
-                anyModWithRequiredCustomisationAdded |= valueChangedEvent.OldValue.All(m => m.GetType() != mod.GetType()) && mod.RequiresConfiguration;
+                anyCustomisableModActive |= modState.Active.Value && modState.Mod.GetSettingsSourceProperties().Any();
+                anyModPendingConfiguration |= modState.PendingConfiguration;
+                modState.PendingConfiguration = false;
             }
 
-            if (anyCustomisableMod)
+            if (anyCustomisableModActive)
             {
                 customisationVisible.Disabled = false;
 
-                if (anyModWithRequiredCustomisationAdded && !customisationVisible.Value)
+                if (anyModPendingConfiguration && !customisationVisible.Value)
                     customisationVisible.Value = true;
             }
             else
@@ -394,7 +399,7 @@ namespace osu.Game.Overlays.Mods
 
             foreach (var button in footerButtonFlow)
             {
-                if (button != customisationButton)
+                if (button != CustomisationButton)
                     button.Enabled.Value = !customisationVisible.Value;
             }
 
@@ -587,14 +592,14 @@ namespace osu.Game.Overlays.Mods
             {
                 if (customisationVisible.Value)
                 {
-                    Debug.Assert(customisationButton != null);
-                    customisationButton.TriggerClick();
+                    Debug.Assert(CustomisationButton != null);
+                    CustomisationButton.TriggerClick();
 
                     if (!immediate)
                         return;
                 }
 
-                backButton.TriggerClick();
+                BackButton.TriggerClick();
             }
         }
 
@@ -611,7 +616,7 @@ namespace osu.Game.Overlays.Mods
         /// Manages horizontal scrolling of mod columns, along with the "active" states of each column based on visibility.
         /// </summary>
         [Cached]
-        internal class ColumnScrollContainer : OsuScrollContainer<ColumnFlowContainer>
+        internal partial class ColumnScrollContainer : OsuScrollContainer<ColumnFlowContainer>
         {
             public ColumnScrollContainer()
                 : base(Direction.Horizontal)
@@ -652,7 +657,7 @@ namespace osu.Game.Overlays.Mods
         /// <summary>
         /// Manages layout of mod columns.
         /// </summary>
-        internal class ColumnFlowContainer : FillFlowContainer<ColumnDimContainer>
+        internal partial class ColumnFlowContainer : FillFlowContainer<ColumnDimContainer>
         {
             public IEnumerable<ModSelectColumn> Columns => Children.Select(dimWrapper => dimWrapper.Column);
 
@@ -668,7 +673,7 @@ namespace osu.Game.Overlays.Mods
         /// <summary>
         /// Encapsulates a column and provides dim and input blocking based on an externally managed "active" state.
         /// </summary>
-        internal class ColumnDimContainer : Container
+        internal partial class ColumnDimContainer : Container
         {
             public ModSelectColumn Column { get; }
 
@@ -708,7 +713,18 @@ namespace osu.Game.Overlays.Mods
                 FinishTransforms();
             }
 
-            protected override bool RequiresChildrenUpdate => base.RequiresChildrenUpdate || (Column as ModColumn)?.SelectionAnimationRunning == true;
+            protected override bool RequiresChildrenUpdate
+            {
+                get
+                {
+                    bool result = base.RequiresChildrenUpdate;
+
+                    if (Column is ModColumn modColumn)
+                        result |= !modColumn.ItemsLoaded || modColumn.SelectionAnimationRunning;
+
+                    return result;
+                }
+            }
 
             private void updateState()
             {
@@ -747,7 +763,7 @@ namespace osu.Game.Overlays.Mods
         /// <summary>
         /// A container which blocks and handles input, managing the "return from customisation" state change.
         /// </summary>
-        private class ClickToReturnContainer : Container
+        private partial class ClickToReturnContainer : Container
         {
             public BindableBool HandleMouse { get; } = new BindableBool();
 

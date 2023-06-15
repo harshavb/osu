@@ -7,16 +7,18 @@ using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Graphics;
+using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using System;
+using osu.Framework.Graphics.Sprites;
 
 namespace osu.Game.Screens.Play.HUD
 {
-    public class SongProgressInfo : Container
+    public partial class SongProgressInfo : Container
     {
-        private OsuSpriteText timeCurrent;
-        private OsuSpriteText timeLeft;
-        private OsuSpriteText progress;
+        private SizePreservingSpriteText timeCurrent;
+        private SizePreservingSpriteText timeLeft;
+        private SizePreservingSpriteText progress;
 
         private double startTime;
         private double endTime;
@@ -26,56 +28,112 @@ namespace osu.Game.Screens.Play.HUD
 
         private double songLength => endTime - startTime;
 
-        private const int margin = 10;
+        public FontUsage Font
+        {
+            set
+            {
+                timeCurrent.Font = value;
+                timeLeft.Font = value;
+                progress.Font = value;
+            }
+        }
+
+        public Colour4 TextColour
+        {
+            set
+            {
+                timeCurrent.Colour = value;
+                timeLeft.Colour = value;
+                progress.Colour = value;
+            }
+        }
 
         public double StartTime
         {
             set => startTime = value;
         }
 
+        public bool ShowProgress { get; init; } = true;
+
         public double EndTime
         {
             set => endTime = value;
         }
 
-        private GameplayClock gameplayClock;
+        private IGameplayClock gameplayClock;
 
         [BackgroundDependencyLoader(true)]
-        private void load(OsuColour colours, GameplayClock clock)
+        private void load(OsuColour colours, IGameplayClock clock)
         {
             if (clock != null)
                 gameplayClock = clock;
 
+            AutoSizeAxes = Axes.Y;
             Children = new Drawable[]
             {
-                timeCurrent = new OsuSpriteText
+                new Container
                 {
-                    Origin = Anchor.BottomLeft,
-                    Anchor = Anchor.BottomLeft,
-                    Colour = colours.BlueLighter,
-                    Font = OsuFont.Numeric,
-                    Margin = new MarginPadding
+                    Anchor = Anchor.CentreLeft,
+                    Origin = Anchor.CentreLeft,
+                    AutoSizeAxes = Axes.Both,
+                    Child = new UprightAspectMaintainingContainer
                     {
-                        Left = margin,
-                    },
+                        Origin = Anchor.Centre,
+                        Anchor = Anchor.Centre,
+                        AutoSizeAxes = Axes.Both,
+                        Scaling = ScaleMode.Vertical,
+                        ScalingFactor = 0.5f,
+                        Child = timeCurrent = new SizePreservingSpriteText
+                        {
+                            Origin = Anchor.Centre,
+                            Anchor = Anchor.Centre,
+                            Colour = colours.BlueLighter,
+                            Font = OsuFont.Numeric,
+                        }
+                    }
                 },
-                progress = new OsuSpriteText
+                new Container
                 {
-                    Origin = Anchor.BottomCentre,
-                    Anchor = Anchor.BottomCentre,
-                    Colour = colours.BlueLighter,
-                    Font = OsuFont.Numeric,
-                },
-                timeLeft = new OsuSpriteText
-                {
-                    Origin = Anchor.BottomRight,
-                    Anchor = Anchor.BottomRight,
-                    Colour = colours.BlueLighter,
-                    Font = OsuFont.Numeric,
-                    Margin = new MarginPadding
+                    Origin = Anchor.Centre,
+                    Anchor = Anchor.Centre,
+                    AutoSizeAxes = Axes.Both,
+                    Alpha = ShowProgress ? 1 : 0,
+                    Child = new UprightAspectMaintainingContainer
                     {
-                        Right = margin,
-                    },
+                        Origin = Anchor.Centre,
+                        Anchor = Anchor.Centre,
+                        AutoSizeAxes = Axes.Both,
+                        Scaling = ScaleMode.Vertical,
+                        ScalingFactor = 0.5f,
+                        Child = progress = new SizePreservingSpriteText
+                        {
+                            Origin = Anchor.Centre,
+                            Anchor = Anchor.Centre,
+                            Colour = colours.BlueLighter,
+                            Font = OsuFont.Numeric,
+                        }
+                    }
+                },
+                new Container
+                {
+                    Origin = Anchor.CentreRight,
+                    Anchor = Anchor.CentreRight,
+                    AutoSizeAxes = Axes.Both,
+                    Child = new UprightAspectMaintainingContainer
+                    {
+                        Origin = Anchor.Centre,
+                        Anchor = Anchor.Centre,
+                        AutoSizeAxes = Axes.Both,
+                        Scaling = ScaleMode.Vertical,
+                        ScalingFactor = 0.5f,
+                        Child = timeLeft = new SizePreservingSpriteText
+                        {
+                            Origin = Anchor.CentreRight,
+                            Anchor = Anchor.CentreRight,
+                            Colour = colours.BlueLighter,
+                            Font = OsuFont.Numeric,
+                        }
+                    }
                 }
             };
         }
@@ -87,12 +145,12 @@ namespace osu.Game.Screens.Play.HUD
             double time = gameplayClock?.CurrentTime ?? Time.Current;
 
             double songCurrentTime = time - startTime;
-            int currentPercent = Math.Max(0, Math.Min(100, (int)(songCurrentTime / songLength * 100)));
+            int currentPercent = songLength == 0 ? 0 : Math.Max(0, Math.Min(100, (int)(songCurrentTime / songLength * 100)));
             int currentSecond = (int)Math.Floor(songCurrentTime / 1000.0);
 
             if (currentPercent != previousPercent)
             {
-                progress.Text = currentPercent.ToString() + @"%";
+                progress.Text = $@"{currentPercent}%";
                 previousPercent = currentPercent;
             }
 

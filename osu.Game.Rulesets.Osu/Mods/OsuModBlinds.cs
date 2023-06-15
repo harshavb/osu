@@ -8,6 +8,7 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
+using osu.Framework.Localisation;
 using osu.Framework.Utils;
 using osu.Game.Beatmaps;
 using osu.Game.Rulesets.Mods;
@@ -19,10 +20,10 @@ using osuTK.Graphics;
 
 namespace osu.Game.Rulesets.Osu.Mods
 {
-    public class OsuModBlinds : Mod, IApplicableToDrawableRuleset<OsuHitObject>, IApplicableToHealthProcessor
+    public partial class OsuModBlinds : Mod, IApplicableToDrawableRuleset<OsuHitObject>, IApplicableToHealthProcessor
     {
         public override string Name => "Blinds";
-        public override string Description => "Play with blinds on your screen.";
+        public override LocalisableString Description => "Play with blinds on your screen.";
         public override string Acronym => "BL";
 
         public override IconUsage? Icon => FontAwesome.Solid.Adjust;
@@ -48,7 +49,7 @@ namespace osu.Game.Rulesets.Osu.Mods
         /// <summary>
         /// Element for the Blinds mod drawing 2 black boxes covering the whole screen which resize inside a restricted area with some leniency.
         /// </summary>
-        public class DrawableOsuBlinds : Container
+        public partial class DrawableOsuBlinds : Container
         {
             /// <summary>
             /// Black background boxes behind blind panel textures.
@@ -203,7 +204,7 @@ namespace osu.Game.Rulesets.Osu.Mods
             /// </summary>
             public void AnimateClosedness(float value) => this.TransformTo(nameof(easing), value, 200, Easing.OutQuint);
 
-            public class ModBlindsPanel : Sprite
+            public partial class ModBlindsPanel : Sprite
             {
                 [BackgroundDependencyLoader]
                 private void load(TextureStore textures)

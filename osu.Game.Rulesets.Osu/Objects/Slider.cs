@@ -10,6 +10,7 @@ using osu.Game.Rulesets.Objects;
 using System.Linq;
 using System.Threading;
 using Newtonsoft.Json;
+using osu.Framework.Bindables;
 using osu.Framework.Caching;
 using osu.Game.Audio;
 using osu.Game.Beatmaps;
@@ -20,7 +21,7 @@ using osu.Game.Rulesets.Scoring;
 
 namespace osu.Game.Rulesets.Osu.Objects
 {
-    public class Slider : OsuHitObject, IHasPathWithRepeats
+    public class Slider : OsuHitObject, IHasPathWithRepeats, IHasSliderVelocity, IHasGenerateTicks
     {
         public double EndTime => StartTime + this.SpanCount() * Path.Distance / Velocity;
 
@@ -32,21 +33,6 @@ namespace osu.Game.Rulesets.Osu.Objects
         }
 
         public override IList<HitSampleInfo> AuxiliarySamples => CreateSlidingSamples().Concat(TailSamples).ToArray();
-
-        public IList<HitSampleInfo> CreateSlidingSamples()
-        {
-            var slidingSamples = new List<HitSampleInfo>();
-
-            var normalSample = Samples.FirstOrDefault(s => s.Name == HitSampleInfo.HIT_NORMAL);
-            if (normalSample != null)
-                slidingSamples.Add(normalSample.With("sliderslide"));
-
-            var whistleSample = Samples.FirstOrDefault(s => s.Name == HitSampleInfo.HIT_WHISTLE);
-            if (whistleSample != null)
-                slidingSamples.Add(whistleSample.With("sliderwhistle"));
-
-            return slidingSamples;
-        }
 
         private readonly Cached<Vector2> endPositionCache = new Cached<Vector2>();
 
@@ -148,6 +134,21 @@ namespace osu.Game.Rulesets.Osu.Objects
         /// </summary>
         public bool OnlyJudgeNestedObjects = true;
 
+        public BindableNumber<double> SliderVelocityBindable { get; } = new BindableDouble(1)
+        {
+            Precision = 0.01,
+            MinValue = 0.1,
+            MaxValue = 10
+        };
+
+        public double SliderVelocity
+        {
+            get => SliderVelocityBindable.Value;
+            set => SliderVelocityBindable.Value = value;
+        }
+
+        public bool GenerateTicks { get; set; } = true;
+
         [JsonIgnore]
         public SliderHeadCircle HeadCircle { get; protected set; }
 
@@ -166,10 +167,10 @@ namespace osu.Game.Rulesets.Osu.Objects
 
             TimingControlPoint timingPoint = controlPointInfo.TimingPointAt(StartTime);
 
-            double scoringDistance = BASE_SCORING_DISTANCE * difficulty.SliderMultiplier * DifficultyControlPoint.SliderVelocity;
+            double scoringDistance = BASE_SCORING_DISTANCE * difficulty.SliderMultiplier * SliderVelocity;
 
             Velocity = scoringDistance / timingPoint.BeatLength;
-            TickDistance = scoringDistance / difficulty.SliderTickRate * TickDistanceMultiplier;
+            TickDistance = GenerateTicks ? (scoringDistance / difficulty.SliderTickRate * TickDistanceMultiplier) : double.PositiveInfinity;
         }
 
         protected override void CreateNestedHitObjects(CancellationToken cancellationToken)

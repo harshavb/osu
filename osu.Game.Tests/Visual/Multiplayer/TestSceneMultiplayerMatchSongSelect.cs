@@ -19,7 +19,6 @@ using osu.Game.Database;
 using osu.Game.Online.Rooms;
 using osu.Game.Overlays.Mods;
 using osu.Game.Rulesets;
-using osu.Game.Rulesets.Catch;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Mods;
@@ -32,7 +31,7 @@ using osu.Game.Tests.Resources;
 
 namespace osu.Game.Tests.Visual.Multiplayer
 {
-    public class TestSceneMultiplayerMatchSongSelect : MultiplayerTestScene
+    public partial class TestSceneMultiplayerMatchSongSelect : MultiplayerTestScene
     {
         private BeatmapManager manager;
         private RulesetStore rulesets;
@@ -69,37 +68,6 @@ namespace osu.Game.Tests.Visual.Multiplayer
         }
 
         [Test]
-        public void TestBeatmapRevertedOnExitIfNoSelection()
-        {
-            BeatmapInfo selectedBeatmap = null;
-
-            AddStep("select beatmap",
-                () => songSelect.Carousel.SelectBeatmap(selectedBeatmap = beatmaps.Where(beatmap => beatmap.Ruleset.OnlineID == new OsuRuleset().LegacyID).ElementAt(1)));
-            AddUntilStep("wait for selection", () => Beatmap.Value.BeatmapInfo.Equals(selectedBeatmap));
-
-            AddStep("exit song select", () => songSelect.Exit());
-            AddAssert("beatmap reverted", () => Beatmap.IsDefault);
-        }
-
-        [Test]
-        public void TestModsRevertedOnExitIfNoSelection()
-        {
-            AddStep("change mods", () => SelectedMods.Value = new[] { new OsuModDoubleTime() });
-
-            AddStep("exit song select", () => songSelect.Exit());
-            AddAssert("mods reverted", () => SelectedMods.Value.Count == 0);
-        }
-
-        [Test]
-        public void TestRulesetRevertedOnExitIfNoSelection()
-        {
-            AddStep("change ruleset", () => Ruleset.Value = new CatchRuleset().RulesetInfo);
-
-            AddStep("exit song select", () => songSelect.Exit());
-            AddAssert("ruleset reverted", () => Ruleset.Value.Equals(new OsuRuleset().RulesetInfo));
-        }
-
-        [Test]
         public void TestBeatmapConfirmed()
         {
             BeatmapInfo selectedBeatmap = null;
@@ -130,6 +98,10 @@ namespace osu.Game.Tests.Visual.Multiplayer
             AddStep($"select {requiredMod.ReadableName()} as required", () => songSelect.Mods.Value = new[] { (Mod)Activator.CreateInstance(requiredMod) });
 
             AddAssert("freemods empty", () => songSelect.FreeMods.Value.Count == 0);
+
+            // A previous test's mod overlay could still be fading out.
+            AddUntilStep("wait for only one freemod overlay", () => this.ChildrenOfType<FreeModSelectOverlay>().Count() == 1);
+
             assertHasFreeModButton(allowedMod, false);
             assertHasFreeModButton(requiredMod, false);
         }
@@ -144,7 +116,7 @@ namespace osu.Game.Tests.Visual.Multiplayer
                           .All(b => b.Mod.GetType() != type));
         }
 
-        private class TestMultiplayerMatchSongSelect : MultiplayerMatchSongSelect
+        private partial class TestMultiplayerMatchSongSelect : MultiplayerMatchSongSelect
         {
             public new Bindable<IReadOnlyList<Mod>> Mods => base.Mods;
 
@@ -152,8 +124,8 @@ namespace osu.Game.Tests.Visual.Multiplayer
 
             public new BeatmapCarousel Carousel => base.Carousel;
 
-            public TestMultiplayerMatchSongSelect(Room room, WorkingBeatmap beatmap = null, RulesetInfo ruleset = null)
-                : base(room, null, beatmap, ruleset)
+            public TestMultiplayerMatchSongSelect(Room room)
+                : base(room)
             {
             }
         }

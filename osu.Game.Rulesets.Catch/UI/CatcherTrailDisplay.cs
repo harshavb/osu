@@ -1,10 +1,9 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using System;
 using osu.Framework.Allocation;
+using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Pooling;
@@ -19,7 +18,7 @@ namespace osu.Game.Rulesets.Catch.UI
     /// Represents a component responsible for displaying
     /// the appropriate catcher trails when requested to.
     /// </summary>
-    public class CatcherTrailDisplay : PooledDrawableWithLifetimeContainer<CatcherTrailEntry, CatcherTrail>
+    public partial class CatcherTrailDisplay : PooledDrawableWithLifetimeContainer<CatcherTrailEntry, CatcherTrail>
     {
         /// <summary>
         /// The most recent time a dash trail was added to this container.
@@ -41,7 +40,7 @@ namespace osu.Game.Rulesets.Catch.UI
         private readonly Container<CatcherTrail> hyperDashAfterImages;
 
         [Resolved]
-        private ISkinSource skin { get; set; }
+        private ISkinSource skin { get; set; } = null!;
 
         public CatcherTrailDisplay()
         {
@@ -93,15 +92,15 @@ namespace osu.Game.Rulesets.Catch.UI
             switch (entry.Animation)
             {
                 case CatcherTrailAnimation.Dashing:
-                    dashTrails.Remove(drawable);
+                    dashTrails.Remove(drawable, false);
                     break;
 
                 case CatcherTrailAnimation.HyperDashing:
-                    hyperDashTrails.Remove(drawable);
+                    hyperDashTrails.Remove(drawable, false);
                     break;
 
                 case CatcherTrailAnimation.HyperDashAfterImage:
-                    hyperDashAfterImages.Remove(drawable);
+                    hyperDashAfterImages.Remove(drawable, false);
                     break;
             }
         }
@@ -130,7 +129,7 @@ namespace osu.Game.Rulesets.Catch.UI
         {
             base.Dispose(isDisposing);
 
-            if (skin != null)
+            if (skin.IsNotNull())
                 skin.SourceChanged -= skinSourceChanged;
         }
     }

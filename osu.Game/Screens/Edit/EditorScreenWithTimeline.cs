@@ -15,7 +15,7 @@ using osu.Game.Screens.Edit.Compose.Components.Timeline;
 
 namespace osu.Game.Screens.Edit
 {
-    public abstract class EditorScreenWithTimeline : EditorScreen
+    public abstract partial class EditorScreenWithTimeline : EditorScreen
     {
         private const float padding = 10;
 
@@ -82,7 +82,7 @@ namespace osu.Game.Screens.Edit
                                                     AutoSizeAxes = Axes.Y,
                                                     Padding = new MarginPadding { Right = 5 },
                                                 },
-                                                new BeatDivisorControl(beatDivisor) { RelativeSizeAxes = Axes.Both }
+                                                new BeatDivisorControl(this.beatDivisor) { RelativeSizeAxes = Axes.Both }
                                             },
                                         },
                                         RowDimensions = new[]

@@ -1,23 +1,20 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using osu.Game.Rulesets.Objects.Types;
-using System;
 using System.Threading;
+using osu.Framework.Bindables;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Beatmaps.Formats;
 using osu.Game.Rulesets.Judgements;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Scoring;
-using osu.Game.Rulesets.Taiko.Judgements;
 using osuTK;
 
 namespace osu.Game.Rulesets.Taiko.Objects
 {
-    public class DrumRoll : TaikoStrongableHitObject, IHasPath
+    public class DrumRoll : TaikoStrongableHitObject, IHasPath, IHasSliderVelocity
     {
         /// <summary>
         /// Drum roll distance that results in a duration of 1 speed-adjusted beat length.
@@ -37,20 +34,23 @@ namespace osu.Game.Rulesets.Taiko.Objects
         /// </summary>
         public double Velocity { get; private set; }
 
+        public BindableNumber<double> SliderVelocityBindable { get; } = new BindableDouble(1)
+        {
+            Precision = 0.01,
+            MinValue = 0.1,
+            MaxValue = 10
+        };
+
+        public double SliderVelocity
+        {
+            get => SliderVelocityBindable.Value;
+            set => SliderVelocityBindable.Value = value;
+        }
+
         /// <summary>
         /// Numer of ticks per beat length.
         /// </summary>
         public int TickRate = 1;
-
-        /// <summary>
-        /// Number of drum roll ticks required for a "Good" hit.
-        /// </summary>
-        public double RequiredGoodHits { get; protected set; }
-
-        /// <summary>
-        /// Number of drum roll ticks required for a "Great" hit.
-        /// </summary>
-        public double RequiredGreatHits { get; protected set; }
 
         /// <summary>
         /// The length (in milliseconds) between ticks of this drumroll.
@@ -58,27 +58,23 @@ namespace osu.Game.Rulesets.Taiko.Objects
         /// </summary>
         private double tickSpacing = 100;
 
-        private float overallDifficulty = BeatmapDifficulty.DEFAULT_DIFFICULTY;
-
         protected override void ApplyDefaultsToSelf(ControlPointInfo controlPointInfo, IBeatmapDifficultyInfo difficulty)
         {
             base.ApplyDefaultsToSelf(controlPointInfo, difficulty);
 
             TimingControlPoint timingPoint = controlPointInfo.TimingPointAt(StartTime);
 
-            double scoringDistance = base_distance * difficulty.SliderMultiplier * DifficultyControlPoint.SliderVelocity;
+            double scoringDistance = base_distance * difficulty.SliderMultiplier * SliderVelocity;
             Velocity = scoringDistance / timingPoint.BeatLength;
 
+            TickRate = difficulty.SliderTickRate == 3 ? 3 : 4;
+
             tickSpacing = timingPoint.BeatLength / TickRate;
-            overallDifficulty = difficulty.OverallDifficulty;
         }
 
         protected override void CreateNestedHitObjects(CancellationToken cancellationToken)
         {
             createTicks(cancellationToken);
-
-            RequiredGoodHits = NestedHitObjects.Count * Math.Min(0.15, 0.05 + 0.10 / 6 * overallDifficulty);
-            RequiredGreatHits = NestedHitObjects.Count * Math.Min(0.30, 0.10 + 0.20 / 6 * overallDifficulty);
 
             base.CreateNestedHitObjects(cancellationToken);
         }
@@ -99,21 +95,33 @@ namespace osu.Game.Rulesets.Taiko.Objects
                     FirstTick = first,
                     TickSpacing = tickSpacing,
                     StartTime = t,
-                    IsStrong = IsStrong
+                    IsStrong = IsStrong,
+                    Samples = Samples
                 });
 
                 first = false;
             }
         }
 
-        public override Judgement CreateJudgement() => new TaikoDrumRollJudgement();
+        public override Judgement CreateJudgement() => new IgnoreJudgement();
 
         protected override HitWindows CreateHitWindows() => HitWindows.Empty;
 
-        protected override StrongNestedHitObject CreateStrongNestedHit(double startTime) => new StrongNestedHit { StartTime = startTime };
+        protected override StrongNestedHitObject CreateStrongNestedHit(double startTime) => new StrongNestedHit(this)
+        {
+            StartTime = startTime,
+            Samples = Samples
+        };
 
         public class StrongNestedHit : StrongNestedHitObject
         {
+            // The strong hit of the drum roll doesn't actually provide any score.
+            public override Judgement CreateJudgement() => new IgnoreJudgement();
+
+            public StrongNestedHit(TaikoHitObject parent)
+                : base(parent)
+            {
+            }
         }
 
         #region LegacyBeatmapEncoder

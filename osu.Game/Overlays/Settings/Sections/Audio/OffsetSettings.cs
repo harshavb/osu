@@ -14,11 +14,11 @@ using osu.Game.Localisation;
 
 namespace osu.Game.Overlays.Settings.Sections.Audio
 {
-    public class OffsetSettings : SettingsSubsection
+    public partial class OffsetSettings : SettingsSubsection
     {
         protected override LocalisableString Header => AudioSettingsStrings.OffsetHeader;
 
-        public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[] { "universal", "uo", "timing" });
+        public override IEnumerable<LocalisableString> FilterTerms => base.FilterTerms.Concat(new LocalisableString[] { "universal", "uo", "timing", "delay", "latency" });
 
         [BackgroundDependencyLoader]
         private void load(OsuConfigManager config)

@@ -9,7 +9,7 @@ using osu.Game.Beatmaps;
 
 namespace osu.Game.Graphics.Backgrounds
 {
-    public class BeatmapBackground : Background
+    public partial class BeatmapBackground : Background
     {
         public readonly WorkingBeatmap Beatmap;
 
@@ -24,7 +24,7 @@ namespace osu.Game.Graphics.Backgrounds
         [BackgroundDependencyLoader]
         private void load(LargeTextureStore textures)
         {
-            Sprite.Texture = Beatmap?.Background ?? textures.Get(fallbackTextureName);
+            Sprite.Texture = Beatmap?.GetBackground() ?? textures.Get(fallbackTextureName);
         }
 
         public override bool Equals(Background other)

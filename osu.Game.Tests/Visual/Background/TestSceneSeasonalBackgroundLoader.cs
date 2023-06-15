@@ -20,7 +20,7 @@ using osu.Game.Online.API.Requests.Responses;
 
 namespace osu.Game.Tests.Visual.Background
 {
-    public class TestSceneSeasonalBackgroundLoader : ScreenTestScene
+    public partial class TestSceneSeasonalBackgroundLoader : ScreenTestScene
     {
         [Resolved]
         private OsuConfigManager config { get; set; }
@@ -171,7 +171,7 @@ namespace osu.Game.Tests.Visual.Background
             => AddStep("create loader", () =>
             {
                 if (backgroundLoader != null)
-                    Remove(backgroundLoader);
+                    Remove(backgroundLoader, true);
 
                 Add(backgroundLoader = new SeasonalBackgroundLoader());
             });

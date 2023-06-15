@@ -13,12 +13,12 @@ using osu.Framework.Development;
 using osu.Framework.IO.Network;
 using osu.Framework.Logging;
 using osu.Framework.Platform;
-using osu.Framework.Testing;
 using osu.Game.Database;
 using osu.Game.Online.API;
 using osu.Game.Online.API.Requests;
 using SharpCompress.Compressors;
 using SharpCompress.Compressors.BZip2;
+using SQLitePCL;
 
 namespace osu.Game.Beatmaps
 {
@@ -29,7 +29,6 @@ namespace osu.Game.Beatmaps
     /// On creating the component, a copy of a database containing metadata for a large subset of beatmaps (stored to <see cref="cache_database_name"/>) will be downloaded if not already present locally.
     /// This will always be checked before doing a second online query to get required metadata.
     /// </remarks>
-    [ExcludeFromDynamicCompile]
     public class BeatmapUpdaterMetadataLookup : IDisposable
     {
         private readonly IAPIProvider api;
@@ -41,6 +40,17 @@ namespace osu.Game.Beatmaps
 
         public BeatmapUpdaterMetadataLookup(IAPIProvider api, Storage storage)
         {
+            try
+            {
+                // required to initialise native SQLite libraries on some platforms.
+                Batteries_V2.Init();
+                raw.sqlite3_config(2 /*SQLITE_CONFIG_MULTITHREAD*/);
+            }
+            catch
+            {
+                // may fail if platform not supported.
+            }
+
             this.api = api;
             this.storage = storage;
 
@@ -166,7 +176,7 @@ namespace osu.Game.Beatmaps
             {
                 try
                 {
-                    await cacheDownloadRequest.PerformAsync();
+                    await cacheDownloadRequest.PerformAsync().ConfigureAwait(false);
                 }
                 catch
                 {
@@ -192,7 +202,7 @@ namespace osu.Game.Beatmaps
 
             try
             {
-                using (var db = new SqliteConnection(DatabaseContextFactory.CreateDatabaseConnectionString("online.db", storage)))
+                using (var db = new SqliteConnection(string.Concat("Data Source=", storage.GetFullPath($@"{"online.db"}", true))))
                 {
                     db.Open();
 

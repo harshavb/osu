@@ -17,7 +17,7 @@ using osu.Game.Tests.Visual;
 namespace osu.Game.Tests.Gameplay
 {
     [HeadlessTest]
-    public class TestSceneMasterGameplayClockContainer : OsuTestScene
+    public partial class TestSceneMasterGameplayClockContainer : OsuTestScene
     {
         private OsuConfigManager localConfig;
 
@@ -45,7 +45,7 @@ namespace osu.Game.Tests.Gameplay
             });
 
             AddStep("start clock", () => gameplayClockContainer.Start());
-            AddUntilStep("elapsed greater than zero", () => gameplayClockContainer.GameplayClock.ElapsedFrameTime > 0);
+            AddUntilStep("elapsed greater than zero", () => gameplayClockContainer.ElapsedFrameTime > 0);
         }
 
         [Test]
@@ -60,29 +60,19 @@ namespace osu.Game.Tests.Gameplay
             });
 
             AddStep("start clock", () => gameplayClockContainer.Start());
-            AddUntilStep("current time greater 2000", () => gameplayClockContainer.GameplayClock.CurrentTime > 2000);
+            AddUntilStep("current time greater 2000", () => gameplayClockContainer.CurrentTime > 2000);
 
             double timeAtReset = 0;
             AddStep("reset clock", () =>
             {
-                timeAtReset = gameplayClockContainer.GameplayClock.CurrentTime;
+                timeAtReset = gameplayClockContainer.CurrentTime;
                 gameplayClockContainer.Reset();
             });
 
-            AddAssert("current time < time at reset", () => gameplayClockContainer.GameplayClock.CurrentTime < timeAtReset);
+            AddAssert("current time < time at reset", () => gameplayClockContainer.CurrentTime < timeAtReset);
         }
 
         [Test]
-        [FlakyTest]
-        /*
-         * Fail rate around 0.15%
-         *
-         * TearDown : osu.Framework.Testing.Drawables.Steps.AssertButton+TracedException : gameplay clock time = 2500
-         * --TearDown
-         *    at osu.Framework.Threading.ScheduledDelegate.RunTaskInternal()
-         *    at osu.Framework.Threading.Scheduler.Update()
-         *    at osu.Framework.Graphics.Drawable.UpdateSubTree()
-         */
         public void TestSeekPerformsInGameplayTime(
             [Values(1.0, 0.5, 2.0)] double clockRate,
             [Values(0.0, 200.0, -200.0)] double userOffset,
@@ -91,6 +81,9 @@ namespace osu.Game.Tests.Gameplay
         {
             ClockBackedTestWorkingBeatmap working = null;
             GameplayClockContainer gameplayClockContainer = null;
+
+            // ReSharper disable once NotAccessedVariable
+            BindableDouble trackAdjustment = null; // keeping a reference for track adjustment
 
             if (setAudioOffsetBeforeConstruction)
                 AddStep($"preset audio offset to {userOffset}", () => localConfig.SetValue(OsuSetting.AudioOffset, userOffset));
@@ -103,16 +96,16 @@ namespace osu.Game.Tests.Gameplay
                 gameplayClockContainer.Reset(startClock: !whileStopped);
             });
 
-            AddStep($"set clock rate to {clockRate}", () => working.Track.AddAdjustment(AdjustableProperty.Frequency, new BindableDouble(clockRate)));
+            AddStep($"set clock rate to {clockRate}", () => working.Track.AddAdjustment(AdjustableProperty.Frequency, trackAdjustment = new BindableDouble(clockRate)));
 
             if (!setAudioOffsetBeforeConstruction)
                 AddStep($"set audio offset to {userOffset}", () => localConfig.SetValue(OsuSetting.AudioOffset, userOffset));
 
             AddStep("seek to 2500", () => gameplayClockContainer.Seek(2500));
-            AddStep("gameplay clock time = 2500", () => Assert.AreEqual(gameplayClockContainer.CurrentTime, 2500, 10f));
+            AddAssert("gameplay clock time = 2500", () => gameplayClockContainer.CurrentTime, () => Is.EqualTo(2500).Within(10f));
 
             AddStep("seek to 10000", () => gameplayClockContainer.Seek(10000));
-            AddStep("gameplay clock time = 10000", () => Assert.AreEqual(gameplayClockContainer.CurrentTime, 10000, 10f));
+            AddAssert("gameplay clock time = 10000", () => gameplayClockContainer.CurrentTime, () => Is.EqualTo(10000).Within(10f));
         }
 
         protected override void Dispose(bool isDisposing)

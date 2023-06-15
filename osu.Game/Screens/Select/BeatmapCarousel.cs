@@ -1,8 +1,6 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-#nullable disable
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -34,7 +32,7 @@ using Realms;
 
 namespace osu.Game.Screens.Select
 {
-    public class BeatmapCarousel : CompositeDrawable, IKeyBindingHandler<GlobalAction>
+    public partial class BeatmapCarousel : CompositeDrawable, IKeyBindingHandler<GlobalAction>
     {
         /// <summary>
         /// Height of the area above the carousel that should be treated as visible due to transparency of elements in front of it.
@@ -47,33 +45,43 @@ namespace osu.Game.Screens.Select
         public float BleedBottom { get; set; }
 
         /// <summary>
-        /// Triggered when the <see cref="BeatmapSets"/> loaded change and are completely loaded.
+        /// Triggered when <see cref="BeatmapSets"/> finish loading, or are subsequently changed.
         /// </summary>
-        public Action BeatmapSetsChanged;
+        public Action? BeatmapSetsChanged;
+
+        /// <summary>
+        /// Triggered after filter conditions have finished being applied to the model hierarchy.
+        /// </summary>
+        public Action? FilterApplied;
 
         /// <summary>
         /// The currently selected beatmap.
         /// </summary>
-        public BeatmapInfo SelectedBeatmapInfo => selectedBeatmap?.BeatmapInfo;
+        public BeatmapInfo? SelectedBeatmapInfo => selectedBeatmap?.BeatmapInfo;
 
-        private CarouselBeatmap selectedBeatmap => selectedBeatmapSet?.Beatmaps.FirstOrDefault(s => s.State.Value == CarouselItemState.Selected);
+        private CarouselBeatmap? selectedBeatmap => selectedBeatmapSet?.Beatmaps.FirstOrDefault(s => s.State.Value == CarouselItemState.Selected);
+
+        /// <summary>
+        /// The total count of non-filtered beatmaps displayed.
+        /// </summary>
+        public int CountDisplayed => beatmapSets.Where(s => !s.Filtered.Value).Sum(s => s.Beatmaps.Count(b => !b.Filtered.Value));
 
         /// <summary>
         /// The currently selected beatmap set.
         /// </summary>
-        public BeatmapSetInfo SelectedBeatmapSet => selectedBeatmapSet?.BeatmapSet;
+        public BeatmapSetInfo? SelectedBeatmapSet => selectedBeatmapSet?.BeatmapSet;
 
         /// <summary>
         /// A function to optionally decide on a recommended difficulty from a beatmap set.
         /// </summary>
-        public Func<IEnumerable<BeatmapInfo>, BeatmapInfo> GetRecommendedBeatmap;
+        public Func<IEnumerable<BeatmapInfo>, BeatmapInfo?>? GetRecommendedBeatmap;
 
-        private CarouselBeatmapSet selectedBeatmapSet;
+        private CarouselBeatmapSet? selectedBeatmapSet;
 
         /// <summary>
         /// Raised when the <see cref="SelectedBeatmapInfo"/> is changed.
         /// </summary>
-        public Action<BeatmapInfo> SelectionChanged;
+        public Action<BeatmapInfo?>? SelectionChanged;
 
         public override bool HandleNonPositionalInput => AllowSelection;
         public override bool HandlePositionalInput => AllowSelection;
@@ -121,7 +129,7 @@ namespace osu.Game.Screens.Select
         {
             CarouselRoot newRoot = new CarouselRoot(this);
 
-            newRoot.AddItems(beatmapSets.Select(s => createCarouselSet(s.Detach())).Where(g => g != null));
+            newRoot.AddItems(beatmapSets.Select(s => createCarouselSet(s.Detach())).OfType<CarouselBeatmapSet>());
 
             root = newRoot;
 
@@ -151,15 +159,15 @@ namespace osu.Game.Screens.Select
 
         private CarouselRoot root;
 
-        private IDisposable subscriptionSets;
-        private IDisposable subscriptionDeletedSets;
-        private IDisposable subscriptionBeatmaps;
-        private IDisposable subscriptionHiddenBeatmaps;
+        private IDisposable? subscriptionSets;
+        private IDisposable? subscriptionDeletedSets;
+        private IDisposable? subscriptionBeatmaps;
+        private IDisposable? subscriptionHiddenBeatmaps;
 
         private readonly DrawablePool<DrawableCarouselBeatmapSet> setPool = new DrawablePool<DrawableCarouselBeatmapSet>(100);
 
-        private Sample spinSample;
-        private Sample randomSelectSample;
+        private Sample? spinSample;
+        private Sample? randomSelectSample;
 
         private int visibleSetsCount;
 
@@ -200,7 +208,7 @@ namespace osu.Game.Screens.Select
         }
 
         [Resolved]
-        private RealmAccess realm { get; set; }
+        private RealmAccess realm { get; set; } = null!;
 
         protected override void LoadComplete()
         {
@@ -215,7 +223,7 @@ namespace osu.Game.Screens.Select
             subscriptionHiddenBeatmaps = realm.RegisterForNotifications(r => r.All<BeatmapInfo>().Where(b => b.Hidden), beatmapsChanged);
         }
 
-        private void deletedBeatmapSetsChanged(IRealmCollection<BeatmapSetInfo> sender, ChangeSet changes, Exception error)
+        private void deletedBeatmapSetsChanged(IRealmCollection<BeatmapSetInfo> sender, ChangeSet? changes, Exception? error)
         {
             // If loading test beatmaps, avoid overwriting with realm subscription callbacks.
             if (loadedTestBeatmaps)
@@ -228,7 +236,7 @@ namespace osu.Game.Screens.Select
                 removeBeatmapSet(sender[i].ID);
         }
 
-        private void beatmapSetsChanged(IRealmCollection<BeatmapSetInfo> sender, ChangeSet changes, Exception error)
+        private void beatmapSetsChanged(IRealmCollection<BeatmapSetInfo> sender, ChangeSet? changes, Exception? error)
         {
             // If loading test beatmaps, avoid overwriting with realm subscription callbacks.
             if (loadedTestBeatmaps)
@@ -265,9 +273,49 @@ namespace osu.Game.Screens.Select
 
             foreach (int i in changes.InsertedIndices)
                 UpdateBeatmapSet(sender[i].Detach());
+
+            if (changes.DeletedIndices.Length > 0 && SelectedBeatmapInfo != null)
+            {
+                // If SelectedBeatmapInfo is non-null, the set should also be non-null.
+                Debug.Assert(SelectedBeatmapSet != null);
+
+                // To handle the beatmap update flow, attempt to track selection changes across delete-insert transactions.
+                // When an update occurs, the previous beatmap set is either soft or hard deleted.
+                // Check if the current selection was potentially deleted by re-querying its validity.
+                bool selectedSetMarkedDeleted = realm.Run(r => r.Find<BeatmapSetInfo>(SelectedBeatmapSet.ID))?.DeletePending != false;
+
+                int[] modifiedAndInserted = changes.NewModifiedIndices.Concat(changes.InsertedIndices).ToArray();
+
+                if (selectedSetMarkedDeleted && modifiedAndInserted.Any())
+                {
+                    // If it is no longer valid, make the bold assumption that an updated version will be available in the modified/inserted indices.
+                    // This relies on the full update operation being in a single transaction, so please don't change that.
+                    foreach (int i in modifiedAndInserted)
+                    {
+                        var beatmapSetInfo = sender[i];
+
+                        foreach (var beatmapInfo in beatmapSetInfo.Beatmaps)
+                        {
+                            if (!((IBeatmapMetadataInfo)beatmapInfo.Metadata).Equals(SelectedBeatmapInfo.Metadata))
+                                continue;
+
+                            // Best effort matching. We can't use ID because in the update flow a new version will get its own GUID.
+                            if (beatmapInfo.DifficultyName == SelectedBeatmapInfo.DifficultyName)
+                            {
+                                SelectBeatmap(beatmapInfo);
+                                return;
+                            }
+                        }
+                    }
+
+                    // If a direct selection couldn't be made, it's feasible that the difficulty name (or beatmap metadata) changed.
+                    // Let's attempt to follow set-level selection anyway.
+                    SelectBeatmap(sender[modifiedAndInserted.First()].Beatmaps.First());
+                }
+            }
         }
 
-        private void beatmapsChanged(IRealmCollection<BeatmapInfo> sender, ChangeSet changes, Exception error)
+        private void beatmapsChanged(IRealmCollection<BeatmapInfo> sender, ChangeSet? changes, Exception? error)
         {
             // we only care about actual changes in hidden status.
             if (changes == null)
@@ -305,6 +353,8 @@ namespace osu.Game.Screens.Select
 
             if (!Scroll.UserScrolling)
                 ScrollToSelected(true);
+
+            BeatmapSetsChanged?.Invoke();
         });
 
         public void UpdateBeatmapSet(BeatmapSetInfo beatmapSet) => Schedule(() =>
@@ -330,7 +380,7 @@ namespace osu.Game.Screens.Select
 
                 // check if we can/need to maintain our current selection.
                 if (previouslySelectedID != null)
-                    select((CarouselItem)newSet.Beatmaps.FirstOrDefault(b => b.BeatmapInfo.ID == previouslySelectedID) ?? newSet);
+                    select((CarouselItem?)newSet.Beatmaps.FirstOrDefault(b => b.BeatmapInfo.ID == previouslySelectedID) ?? newSet);
             }
 
             itemsCache.Invalidate();
@@ -347,7 +397,7 @@ namespace osu.Game.Screens.Select
         /// <param name="beatmapInfo">The beatmap to select.</param>
         /// <param name="bypassFilters">Whether to select the beatmap even if it is filtered (i.e., not visible on carousel).</param>
         /// <returns>True if a selection was made, False if it wasn't.</returns>
-        public bool SelectBeatmap(BeatmapInfo beatmapInfo, bool bypassFilters = true)
+        public bool SelectBeatmap(BeatmapInfo? beatmapInfo, bool bypassFilters = true)
         {
             // ensure that any pending events from BeatmapManager have been run before attempting a selection.
             Scheduler.Update();
@@ -405,6 +455,9 @@ namespace osu.Game.Screens.Select
 
         private void selectNextSet(int direction, bool skipDifficulties)
         {
+            if (selectedBeatmap == null || selectedBeatmapSet == null)
+                return;
+
             var unfilteredSets = beatmapSets.Where(s => !s.Filtered.Value).ToList();
 
             var nextSet = unfilteredSets[(unfilteredSets.IndexOf(selectedBeatmapSet) + direction + unfilteredSets.Count) % unfilteredSets.Count];
@@ -417,7 +470,7 @@ namespace osu.Game.Screens.Select
 
         private void selectNextDifficulty(int direction)
         {
-            if (selectedBeatmap == null)
+            if (selectedBeatmap == null || selectedBeatmapSet == null)
                 return;
 
             var unfilteredDifficulties = selectedBeatmapSet.Items.Where(s => !s.Filtered.Value).ToList();
@@ -446,7 +499,7 @@ namespace osu.Game.Screens.Select
             if (!visibleSets.Any())
                 return false;
 
-            if (selectedBeatmap != null)
+            if (selectedBeatmap != null && selectedBeatmapSet != null)
             {
                 randomSelectedBeatmaps.Push(selectedBeatmap);
 
@@ -489,11 +542,13 @@ namespace osu.Game.Screens.Select
 
                 if (!beatmap.Filtered.Value)
                 {
-                    if (RandomAlgorithm.Value == RandomSelectAlgorithm.RandomPermutation)
-                        previouslyVisitedRandomSets.Remove(selectedBeatmapSet);
-
                     if (selectedBeatmapSet != null)
+                    {
+                        if (RandomAlgorithm.Value == RandomSelectAlgorithm.RandomPermutation)
+                            previouslyVisitedRandomSets.Remove(selectedBeatmapSet);
+
                         playSpinSample(distanceBetween(beatmap, selectedBeatmapSet));
+                    }
 
                     select(beatmap);
                     break;
@@ -505,14 +560,18 @@ namespace osu.Game.Screens.Select
 
         private void playSpinSample(double distance)
         {
-            var chan = spinSample.GetChannel();
-            chan.Frequency.Value = 1f + Math.Min(1f, distance / visibleSetsCount);
-            chan.Play();
+            var chan = spinSample?.GetChannel();
+
+            if (chan != null)
+            {
+                chan.Frequency.Value = 1f + Math.Min(1f, distance / visibleSetsCount);
+                chan.Play();
+            }
 
             randomSelectSample?.Play();
         }
 
-        private void select(CarouselItem item)
+        private void select(CarouselItem? item)
         {
             if (!AllowSelection)
                 return;
@@ -524,7 +583,7 @@ namespace osu.Game.Screens.Select
 
         private FilterCriteria activeCriteria = new FilterCriteria();
 
-        protected ScheduledDelegate PendingFilter;
+        protected ScheduledDelegate? PendingFilter;
 
         public bool AllowSelection = true;
 
@@ -549,6 +608,9 @@ namespace osu.Game.Screens.Select
 
         public void FlushPendingFilterOperations()
         {
+            if (!IsLoaded)
+                return;
+
             if (PendingFilter?.Completed == false)
             {
                 applyActiveCriteria(false);
@@ -556,7 +618,7 @@ namespace osu.Game.Screens.Select
             }
         }
 
-        public void Filter(FilterCriteria newCriteria, bool debounce = true)
+        public void Filter(FilterCriteria? newCriteria, bool debounce = true)
         {
             if (newCriteria != null)
                 activeCriteria = newCriteria;
@@ -589,6 +651,8 @@ namespace osu.Game.Screens.Select
 
                 if (alwaysResetScrollPosition || !Scroll.UserScrolling)
                     ScrollToSelected(true);
+
+                FilterApplied?.Invoke();
             }
         }
 
@@ -692,6 +756,8 @@ namespace osu.Game.Screens.Select
 
                     foreach (var panel in Scroll.Children)
                     {
+                        Debug.Assert(panel.Item != null);
+
                         if (toDisplay.Remove(panel.Item))
                         {
                             // panel already displayed.
@@ -722,6 +788,28 @@ namespace osu.Game.Screens.Select
             foreach (DrawableCarouselItem item in Scroll.Children)
             {
                 updateItem(item);
+
+                Debug.Assert(item.Item != null);
+
+                if (item.Item.Visible)
+                {
+                    bool isSelected = item.Item.State.Value == CarouselItemState.Selected;
+
+                    // Cheap way of doing animations when entering / exiting song select.
+                    const double half_time = 50;
+                    const float panel_x_offset_when_inactive = 200;
+
+                    if (isSelected || AllowSelection)
+                    {
+                        item.Alpha = (float)Interpolation.DampContinuously(item.Alpha, 1, half_time, Clock.ElapsedFrameTime);
+                        item.X = (float)Interpolation.DampContinuously(item.X, 0, half_time, Clock.ElapsedFrameTime);
+                    }
+                    else
+                    {
+                        item.Alpha = (float)Interpolation.DampContinuously(item.Alpha, 0, half_time, Clock.ElapsedFrameTime);
+                        item.X = (float)Interpolation.DampContinuously(item.X, panel_x_offset_when_inactive, half_time, Clock.ElapsedFrameTime);
+                    }
+                }
 
                 if (item is DrawableCarouselBeatmapSet set)
                 {
@@ -759,7 +847,7 @@ namespace osu.Game.Screens.Select
             return (firstIndex, lastIndex);
         }
 
-        private CarouselBeatmapSet createCarouselSet(BeatmapSetInfo beatmapSet)
+        private CarouselBeatmapSet? createCarouselSet(BeatmapSetInfo beatmapSet)
         {
             // This can be moved to the realm query if required using:
             // .Filter("DeletePending == false && Protected == false && ANY Beatmaps.Hidden == false")
@@ -925,7 +1013,7 @@ namespace osu.Game.Screens.Select
         /// </summary>
         /// <param name="item">The item to be updated.</param>
         /// <param name="parent">For nested items, the parent of the item to be updated.</param>
-        private void updateItem(DrawableCarouselItem item, DrawableCarouselItem parent = null)
+        private void updateItem(DrawableCarouselItem item, DrawableCarouselItem? parent = null)
         {
             Vector2 posInScroll = Scroll.ScrollContent.ToLocalSpace(item.Header.ScreenSpaceDrawQuad.Centre);
             float itemDrawY = posInScroll.Y - visibleUpperBound;
@@ -953,13 +1041,13 @@ namespace osu.Game.Screens.Select
         /// </summary>
         private class CarouselBoundsItem : CarouselItem
         {
-            public override DrawableCarouselItem CreateDrawableRepresentation() =>
-                throw new NotImplementedException();
+            public override DrawableCarouselItem CreateDrawableRepresentation() => throw new NotImplementedException();
         }
 
         private class CarouselRoot : CarouselGroupEagerSelect
         {
-            private readonly BeatmapCarousel carousel;
+            // May only be null during construction (State.Value set causes PerformSelection to be triggered).
+            private readonly BeatmapCarousel? carousel;
 
             public readonly Dictionary<Guid, CarouselBeatmapSet> BeatmapSetsByID = new Dictionary<Guid, CarouselBeatmapSet>();
 
@@ -980,7 +1068,7 @@ namespace osu.Game.Screens.Select
                 base.AddItem(i);
             }
 
-            public CarouselBeatmapSet RemoveChild(Guid beatmapSetID)
+            public CarouselBeatmapSet? RemoveChild(Guid beatmapSetID)
             {
                 if (BeatmapSetsByID.TryGetValue(beatmapSetID, out var carouselBeatmapSet))
                 {
@@ -1001,14 +1089,14 @@ namespace osu.Game.Screens.Select
 
             protected override void PerformSelection()
             {
-                if (LastSelected == null || LastSelected.Filtered.Value)
+                if (LastSelected == null)
                     carousel?.SelectNextRandom();
                 else
                     base.PerformSelection();
             }
         }
 
-        protected class CarouselScrollContainer : UserTrackingScrollContainer<DrawableCarouselItem>
+        protected partial class CarouselScrollContainer : UserTrackingScrollContainer<DrawableCarouselItem>
         {
             private bool rightMouseScrollBlocked;
 

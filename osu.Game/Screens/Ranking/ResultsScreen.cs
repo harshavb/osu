@@ -29,7 +29,7 @@ using osuTK;
 
 namespace osu.Game.Screens.Ranking
 {
-    public abstract class ResultsScreen : ScreenWithBeatmapBackground, IKeyBindingHandler<GlobalAction>
+    public abstract partial class ResultsScreen : ScreenWithBeatmapBackground, IKeyBindingHandler<GlobalAction>
     {
         protected const float BACKGROUND_BLUR = 20;
         private static readonly float screen_height = 768 - TwoLayerButton.SIZE_EXTENDED.Y;
@@ -96,11 +96,11 @@ namespace osu.Game.Screens.Ranking
                                 RelativeSizeAxes = Axes.Both,
                                 Children = new Drawable[]
                                 {
-                                    statisticsPanel = new StatisticsPanel
+                                    statisticsPanel = CreateStatisticsPanel().With(panel =>
                                     {
-                                        RelativeSizeAxes = Axes.Both,
-                                        Score = { BindTarget = SelectedScore }
-                                    },
+                                        panel.RelativeSizeAxes = Axes.Both;
+                                        panel.Score.BindTarget = SelectedScore;
+                                    }),
                                     ScorePanelList = new ScorePanelList
                                     {
                                         RelativeSizeAxes = Axes.Both,
@@ -177,7 +177,7 @@ namespace osu.Game.Screens.Ranking
                     {
                         if (!this.IsCurrentScreen()) return;
 
-                        player?.Restart();
+                        player?.Restart(true);
                     },
                 });
             }
@@ -230,6 +230,11 @@ namespace osu.Game.Screens.Ranking
         /// <param name="scoresCallback">A callback which should be called when fetching is completed. Scheduling is not required.</param>
         /// <returns>An <see cref="APIRequest"/> responsible for the fetch operation. This will be queued and performed automatically.</returns>
         protected virtual APIRequest FetchNextPage(int direction, Action<IEnumerable<ScoreInfo>> scoresCallback) => null;
+
+        /// <summary>
+        /// Creates the <see cref="StatisticsPanel"/> to be used to display extended information about scores.
+        /// </summary>
+        protected virtual StatisticsPanel CreateStatisticsPanel() => new StatisticsPanel();
 
         private void fetchScoresCallback(IEnumerable<ScoreInfo> scores) => Schedule(() =>
         {
@@ -317,7 +322,7 @@ namespace osu.Game.Screens.Ranking
                 var screenSpacePos = detachedPanel.ScreenSpaceDrawQuad.TopLeft;
 
                 // Remove from the local container and re-attach.
-                detachedPanelContainer.Remove(detachedPanel);
+                detachedPanelContainer.Remove(detachedPanel, false);
                 ScorePanelList.Attach(detachedPanel);
 
                 // Move into its original location in the attached container first, then to the final location.
@@ -357,7 +362,7 @@ namespace osu.Game.Screens.Ranking
         {
         }
 
-        protected class VerticalScrollContainer : OsuScrollContainer
+        protected partial class VerticalScrollContainer : OsuScrollContainer
         {
             protected override Container<Drawable> Content => content;
 

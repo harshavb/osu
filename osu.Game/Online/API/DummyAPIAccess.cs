@@ -8,12 +8,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics;
+using osu.Game.Localisation;
 using osu.Game.Online.API.Requests.Responses;
+using osu.Game.Online.Notifications;
+using osu.Game.Tests;
 using osu.Game.Users;
 
 namespace osu.Game.Online.API
 {
-    public class DummyAPIAccess : Component, IAPIProvider
+    public partial class DummyAPIAccess : Component, IAPIProvider
     {
         public const int DUMMY_USER_ID = 1001;
 
@@ -26,6 +29,8 @@ namespace osu.Game.Online.API
         public BindableList<APIUser> Friends { get; } = new BindableList<APIUser>();
 
         public Bindable<UserActivity> Activity { get; } = new Bindable<UserActivity>();
+
+        public Language Language => Language.en;
 
         public string AccessToken => "token";
 
@@ -115,6 +120,8 @@ namespace osu.Game.Online.API
 
         public IHubClientConnector GetHubConnector(string clientName, string endpoint, bool preferMessagePack) => null;
 
+        public NotificationsClientConnector GetNotificationsConnector() => new PollingNotificationsClientConnector(this);
+
         public RegistrationRequest.RegistrationRequestErrors CreateAccount(string email, string username, string password)
         {
             Thread.Sleep(200);
@@ -128,5 +135,13 @@ namespace osu.Game.Online.API
         IBindable<UserActivity> IAPIProvider.Activity => Activity;
 
         public void FailNextLogin() => shouldFailNextLogin = true;
+
+        protected override void Dispose(bool isDisposing)
+        {
+            base.Dispose(isDisposing);
+
+            // Ensure (as much as we can) that any pending tasks are run.
+            Scheduler.Update();
+        }
     }
 }

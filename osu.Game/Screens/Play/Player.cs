@@ -4,10 +4,12 @@
 #nullable disable
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using JetBrains.Annotations;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
@@ -33,6 +35,7 @@ using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.UI;
 using osu.Game.Scoring;
 using osu.Game.Scoring.Legacy;
+using osu.Game.Screens.Play.HUD;
 using osu.Game.Screens.Ranking;
 using osu.Game.Skinning;
 using osu.Game.Users;
@@ -41,7 +44,7 @@ using osuTK.Graphics;
 namespace osu.Game.Screens.Play
 {
     [Cached]
-    public abstract class Player : ScreenWithBeatmapBackground, ISamplePlaybackDisabler, ILocalUserPlayInfo
+    public abstract partial class Player : ScreenWithBeatmapBackground, ISamplePlaybackDisabler, ILocalUserPlayInfo
     {
         /// <summary>
         /// The delay upon completion of the beatmap before displaying the results screen.
@@ -63,6 +66,8 @@ namespace osu.Game.Screens.Play
 
         public override bool HideOverlaysOnEnter => true;
 
+        public override bool HideMenuCursorOnNonMouseInput => true;
+
         protected override OverlayActivation InitialOverlayActivationMode => OverlayActivation.UserTriggered;
 
         // We are managing our own adjustments (see OnEntering/OnExiting).
@@ -77,7 +82,7 @@ namespace osu.Game.Screens.Play
         /// </summary>
         protected virtual bool PauseOnFocusLost => true;
 
-        public Action RestartRequested;
+        public Action<bool> RestartRequested;
 
         private bool isRestarting;
 
@@ -90,6 +95,11 @@ namespace osu.Game.Screens.Play
         private readonly Bindable<bool> localUserPlaying = new Bindable<bool>();
 
         public int RestartCount;
+
+        /// <summary>
+        /// Whether the <see cref="HUDOverlay"/> is currently visible.
+        /// </summary>
+        public IBindable<bool> ShowingOverlayComponents = new Bindable<bool>();
 
         [Resolved]
         private ScoreManager scoreManager { get; set; }
@@ -227,9 +237,6 @@ namespace osu.Game.Screens.Play
 
             dependencies.CacheAs(HealthProcessor);
 
-            if (!ScoreProcessor.Mode.Disabled)
-                config.BindWith(OsuSetting.ScoreDisplayMode, ScoreProcessor.Mode);
-
             InternalChild = GameplayClockContainer = CreateGameplayClockContainer(Beatmap.Value, DrawableRuleset.GameplayStartTime);
 
             AddInternal(screenSuspension = new ScreenSuspensionHandler(GameplayClockContainer));
@@ -238,6 +245,7 @@ namespace osu.Game.Screens.Play
 
             // ensure the score is in a consistent state with the current player.
             Score.ScoreInfo.BeatmapInfo = Beatmap.Value.BeatmapInfo;
+            Score.ScoreInfo.BeatmapHash = Beatmap.Value.BeatmapInfo.Hash;
             Score.ScoreInfo.Ruleset = ruleset.RulesetInfo;
             Score.ScoreInfo.Mods = gameplayMods;
 
@@ -266,8 +274,8 @@ namespace osu.Game.Screens.Play
                 },
                 FailOverlay = new FailOverlay
                 {
-                    SaveReplay = prepareAndImportScore,
-                    OnRetry = Restart,
+                    SaveReplay = async () => await prepareAndImportScoreAsync(true).ConfigureAwait(false),
+                    OnRetry = () => Restart(),
                     OnQuit = () => PerformExit(true),
                 },
                 new HotkeyExitOverlay
@@ -294,10 +302,12 @@ namespace osu.Game.Screens.Play
                         if (!this.IsCurrentScreen()) return;
 
                         fadeOut(true);
-                        Restart();
+                        Restart(true);
                     },
                 });
             }
+
+            dependencies.CacheAs(DrawableRuleset.FrameStableClock);
 
             // add the overlay components as a separate step as they proxy some elements from the above underlay/gameplay components.
             // also give the overlays the ruleset skin provider to allow rulesets to potentially override HUD elements (used to disable combo counters etc.)
@@ -330,7 +340,7 @@ namespace osu.Game.Screens.Play
             DrawableRuleset.HasReplayLoaded.BindValueChanged(_ => updateGameplayState());
 
             // bind clock into components that require it
-            DrawableRuleset.IsPaused.BindTo(GameplayClockContainer.IsPaused);
+            ((IBindable<bool>)DrawableRuleset.IsPaused).BindTo(GameplayClockContainer.IsPaused);
 
             DrawableRuleset.NewResult += r =>
             {
@@ -345,14 +355,10 @@ namespace osu.Game.Screens.Play
                 ScoreProcessor.RevertResult(r);
             };
 
-            DimmableStoryboard.HasStoryboardEnded.ValueChanged += storyboardEnded =>
-            {
-                if (storyboardEnded.NewValue)
-                    progressToResults(true);
-            };
+            DimmableStoryboard.HasStoryboardEnded.ValueChanged += _ => checkScoreCompleted();
 
             // Bind the judgement processors to ourselves
-            ScoreProcessor.HasCompleted.BindValueChanged(scoreCompletionChanged);
+            ScoreProcessor.HasCompleted.BindValueChanged(_ => checkScoreCompleted());
             HealthProcessor.Failed += onFail;
 
             // Provide judgement processors to mods after they're loaded so that they're on the gameplay clock,
@@ -371,6 +377,11 @@ namespace osu.Game.Screens.Play
 
             IsBreakTime.BindTo(breakTracker.IsBreakTime);
             IsBreakTime.BindValueChanged(onBreakTimeChanged, true);
+
+            if (Configuration.AutomaticallySkipIntro)
+                skipIntroOverlay.SkipWhenReady();
+
+            loadLeaderboard();
         }
 
         protected virtual GameplayClockContainer CreateGameplayClockContainer(WorkingBeatmap beatmap, double gameplayStart) => new MasterGameplayClockContainer(beatmap, gameplayStart);
@@ -413,17 +424,21 @@ namespace osu.Game.Screens.Play
                     // display the cursor above some HUD elements.
                     DrawableRuleset.Cursor?.CreateProxy() ?? new Container(),
                     DrawableRuleset.ResumeOverlay?.CreateProxy() ?? new Container(),
-                    HUDOverlay = new HUDOverlay(DrawableRuleset, GameplayState.Mods)
+                    HUDOverlay = new HUDOverlay(DrawableRuleset, GameplayState.Mods, Configuration.AlwaysShowLeaderboard)
                     {
                         HoldToQuit =
                         {
                             Action = () => PerformExit(true),
-                            IsPaused = { BindTarget = GameplayClockContainer.IsPaused }
+                            IsPaused = { BindTarget = GameplayClockContainer.IsPaused },
+                            ReplayLoaded = { BindTarget = DrawableRuleset.HasReplayLoaded },
                         },
                         KeyCounter =
                         {
+                            IsCounting =
+                            {
+                                Value = false
+                            },
                             AlwaysVisible = { BindTarget = DrawableRuleset.HasReplayLoaded },
-                            IsCounting = false
                         },
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre
@@ -441,7 +456,7 @@ namespace osu.Game.Screens.Play
                     {
                         OnResume = Resume,
                         Retries = RestartCount,
-                        OnRetry = Restart,
+                        OnRetry = () => Restart(),
                         OnQuit = () => PerformExit(true),
                     },
                 },
@@ -463,7 +478,7 @@ namespace osu.Game.Screens.Play
         {
             updateGameplayState();
             updatePauseOnFocusLostState();
-            HUDOverlay.KeyCounter.IsCounting = !isBreakTime.NewValue;
+            HUDOverlay.KeyCounter.IsCounting.Value = !isBreakTime.NewValue;
         }
 
         private void updateGameplayState()
@@ -475,7 +490,7 @@ namespace osu.Game.Screens.Play
 
         private void updateSampleDisabledState()
         {
-            samplePlaybackDisabled.Value = DrawableRuleset.FrameStableClock.IsCatchingUp.Value || GameplayClockContainer.GameplayClock.IsPaused.Value;
+            samplePlaybackDisabled.Value = DrawableRuleset.FrameStableClock.IsCatchingUp.Value || GameplayClockContainer.IsPaused.Value;
         }
 
         private void updatePauseOnFocusLostState()
@@ -558,9 +573,6 @@ namespace osu.Game.Screens.Play
         /// </param>
         protected void PerformExit(bool showDialogFirst)
         {
-            // if an exit has been requested, cancel any pending completion (the user has shown intention to exit).
-            resultsDisplayDelegate?.Cancel();
-
             // there is a chance that an exit request occurs after the transition to results has already started.
             // even in such a case, the user has shown intent, so forcefully return to this screen (to proceed with the upwards exit process).
             if (!this.IsCurrentScreen())
@@ -594,6 +606,12 @@ namespace osu.Game.Screens.Play
                     return;
                 }
             }
+
+            // if an exit has been requested, cancel any pending completion (the user has shown intention to exit).
+            resultsDisplayDelegate?.Cancel();
+
+            // import current score if possible.
+            prepareAndImportScoreAsync();
 
             // The actual exit is performed if
             // - the pause / fail dialog was not requested
@@ -637,8 +655,7 @@ namespace osu.Game.Screens.Play
             bool wasFrameStable = DrawableRuleset.FrameStablePlayback;
             DrawableRuleset.FrameStablePlayback = false;
 
-            GameplayClockContainer.StartTime = time;
-            GameplayClockContainer.Reset();
+            GameplayClockContainer.Reset(time);
 
             // Delay resetting frame-stable playback for one frame to give the FrameStabilityContainer a chance to seek.
             frameStablePlaybackResetDelegate = ScheduleAfterChildren(() => DrawableRuleset.FrameStablePlayback = wasFrameStable);
@@ -648,7 +665,8 @@ namespace osu.Game.Screens.Play
         /// Restart gameplay via a parent <see cref="PlayerLoader"/>.
         /// <remarks>This can be called from a child screen in order to trigger the restart process.</remarks>
         /// </summary>
-        public void Restart()
+        /// <param name="quickRestart">Whether a quick restart was requested (skipping intro etc.).</param>
+        public void Restart(bool quickRestart = false)
         {
             if (!Configuration.AllowRestart)
                 return;
@@ -660,7 +678,7 @@ namespace osu.Game.Screens.Play
             musicController.Stop();
 
             sampleRestart?.Play();
-            RestartRequested?.Invoke();
+            RestartRequested?.Invoke(quickRestart);
 
             PerformExit(false);
         }
@@ -684,19 +702,20 @@ namespace osu.Game.Screens.Play
         /// <summary>
         /// Handles changes in player state which may progress the completion of gameplay / this screen's lifetime.
         /// </summary>
-        /// <exception cref="InvalidOperationException">Thrown if this method is called more than once without changing state.</exception>
-        private void scoreCompletionChanged(ValueChangedEvent<bool> completed)
+        private void checkScoreCompleted()
         {
             // If this player instance is in the middle of an exit, don't attempt any kind of state update.
             if (!this.IsCurrentScreen())
                 return;
 
-            // Special case to handle rewinding post-completion. This is the only way already queued forward progress can be cancelled.
-            // TODO: Investigate whether this can be moved to a RewindablePlayer subclass or similar.
-            // Currently, even if this scenario is hit, prepareScoreForDisplay has already been queued (and potentially run).
-            // In scenarios where rewinding is possible (replay, spectating) this is a non-issue as no submission/import work is done,
-            // but it still doesn't feel right that this exists here.
-            if (!completed.NewValue)
+            // Handle cases of arriving at this method when not in a completed state.
+            // - When a storyboard completion triggered this call earlier than gameplay finishes.
+            // - When a replay has been rewound before a queued resultsDisplayDelegate has run.
+            //
+            // Currently, even if this scenario is hit, prepareAndImportScoreAsync has already been queued (and potentially run).
+            // In the scenarios above, this is a non-issue, but it still feels a bit convoluted to have to cancel in this method.
+            // Maybe this can be improved with further refactoring.
+            if (!ScoreProcessor.HasCompleted.Value)
             {
                 resultsDisplayDelegate?.Cancel();
                 resultsDisplayDelegate = null;
@@ -717,20 +736,15 @@ namespace osu.Game.Screens.Play
             // is no chance that a user could return to the (already completed) Player instance from a child screen.
             ValidForResume = false;
 
-            // Ensure we are not writing to the replay any more, as we are about to consume and store the score.
-            DrawableRuleset.SetRecordTarget(null);
-
             if (!Configuration.ShowResults)
                 return;
 
-            prepareScoreForDisplayTask ??= Task.Run(prepareAndImportScore);
+            bool storyboardStillRunning = DimmableStoryboard.ContentDisplayed && !DimmableStoryboard.HasStoryboardEnded.Value;
 
-            bool storyboardHasOutro = DimmableStoryboard.ContentDisplayed && !DimmableStoryboard.HasStoryboardEnded.Value;
-
-            if (storyboardHasOutro)
+            // If the current beatmap has a storyboard, this method will be called again on storyboard completion.
+            // Alternatively, the user may press the outro skip button, forcing immediate display of the results screen.
+            if (storyboardStillRunning)
             {
-                // if the current beatmap has a storyboard, the progression to results will be handled by the storyboard ending
-                // or the user pressing the skip outro button.
                 skipOutroOverlay.Show();
                 return;
             }
@@ -739,71 +753,94 @@ namespace osu.Game.Screens.Play
         }
 
         /// <summary>
-        /// Asynchronously run score preparation operations (database import, online submission etc.).
-        /// </summary>
-        /// <returns>The final score.</returns>
-        private async Task<ScoreInfo> prepareAndImportScore()
-        {
-            var scoreCopy = Score.DeepClone();
-
-            try
-            {
-                await PrepareScoreForResultsAsync(scoreCopy).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, @"Score preparation failed!");
-            }
-
-            try
-            {
-                await ImportScore(scoreCopy).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, @"Score import failed!");
-            }
-
-            return scoreCopy.ScoreInfo;
-        }
-
-        /// <summary>
         /// Queue the results screen for display.
         /// </summary>
         /// <remarks>
         /// A final display will only occur once all work is completed in <see cref="PrepareScoreForResultsAsync"/>. This means that even after calling this method, the results screen will never be shown until <see cref="JudgementProcessor.HasCompleted">ScoreProcessor.HasCompleted</see> becomes <see langword="true"/>.
-        ///
-        /// Calling this method multiple times will have no effect.
         /// </remarks>
         /// <param name="withDelay">Whether a minimum delay (<see cref="RESULTS_DISPLAY_DELAY"/>) should be added before the screen is displayed.</param>
         private void progressToResults(bool withDelay)
         {
-            if (resultsDisplayDelegate != null)
-                // Note that if progressToResults is called one withDelay=true and then withDelay=false, this no-delay timing will not be
-                // accounted for. shouldn't be a huge concern (a user pressing the skip button after a results progression has already been queued
-                // may take x00 more milliseconds than expected in the very rare edge case).
-                //
-                // If required we can handle this more correctly by rescheduling here.
-                return;
+            resultsDisplayDelegate?.Cancel();
 
             double delay = withDelay ? RESULTS_DISPLAY_DELAY : 0;
 
             resultsDisplayDelegate = new ScheduledDelegate(() =>
             {
-                if (prepareScoreForDisplayTask?.IsCompleted != true)
+                if (prepareScoreForDisplayTask == null)
+                {
+                    // Try importing score since the task hasn't been invoked yet.
+                    prepareAndImportScoreAsync();
+                    return;
+                }
+
+                if (!prepareScoreForDisplayTask.IsCompleted)
                     // If the asynchronous preparation has not completed, keep repeating this delegate.
                     return;
 
                 resultsDisplayDelegate?.Cancel();
 
+                if (prepareScoreForDisplayTask.GetResultSafely() == null)
+                {
+                    // If score import did not occur, we do not want to show the results screen.
+                    return;
+                }
+
                 if (!this.IsCurrentScreen())
                     // This player instance may already be in the process of exiting.
                     return;
+
+                Debug.Assert(ScoreProcessor.Rank.Value != ScoreRank.F);
 
                 this.Push(CreateResults(prepareScoreForDisplayTask.GetResultSafely()));
             }, Time.Current + delay, 50);
 
             Scheduler.Add(resultsDisplayDelegate);
+        }
+
+        /// <summary>
+        /// Asynchronously run score preparation operations (database import, online submission etc.).
+        /// </summary>
+        /// <param name="forceImport">Whether the score should be imported even if non-passing (or the current configuration doesn't allow for it).</param>
+        /// <returns>The final score.</returns>
+        [ItemCanBeNull]
+        private Task<ScoreInfo> prepareAndImportScoreAsync(bool forceImport = false)
+        {
+            // Ensure we are not writing to the replay any more, as we are about to consume and store the score.
+            DrawableRuleset.SetRecordTarget(null);
+
+            if (prepareScoreForDisplayTask != null)
+                return prepareScoreForDisplayTask;
+
+            // We do not want to import the score in cases where we don't show results
+            bool canShowResults = Configuration.ShowResults && ScoreProcessor.HasCompleted.Value && GameplayState.HasPassed;
+            if (!canShowResults && !forceImport)
+                return Task.FromResult<ScoreInfo>(null);
+
+            return prepareScoreForDisplayTask = Task.Run(async () =>
+            {
+                var scoreCopy = Score.DeepClone();
+
+                try
+                {
+                    await PrepareScoreForResultsAsync(scoreCopy).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, @"Score preparation failed!");
+                }
+
+                try
+                {
+                    await ImportScore(scoreCopy).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, @"Score import failed!");
+                }
+
+                return scoreCopy.ScoreInfo;
+            });
         }
 
         protected override bool OnScroll(ScrollEvent e)
@@ -816,6 +853,41 @@ namespace osu.Game.Screens.Play
             return mouseWheelDisabled.Value && !e.AltPressed;
         }
 
+        #region Gameplay leaderboard
+
+        protected readonly Bindable<bool> LeaderboardExpandedState = new BindableBool();
+
+        private void loadLeaderboard()
+        {
+            HUDOverlay.HoldingForHUD.BindValueChanged(_ => updateLeaderboardExpandedState());
+            LocalUserPlaying.BindValueChanged(_ => updateLeaderboardExpandedState(), true);
+
+            var gameplayLeaderboard = CreateGameplayLeaderboard();
+
+            if (gameplayLeaderboard != null)
+            {
+                LoadComponentAsync(gameplayLeaderboard, leaderboard =>
+                {
+                    if (!LoadedBeatmapSuccessfully)
+                        return;
+
+                    leaderboard.Expanded.BindTo(LeaderboardExpandedState);
+
+                    AddLeaderboardToHUD(leaderboard);
+                });
+            }
+        }
+
+        [CanBeNull]
+        protected virtual GameplayLeaderboard CreateGameplayLeaderboard() => null;
+
+        protected virtual void AddLeaderboardToHUD(GameplayLeaderboard leaderboard) => HUDOverlay.LeaderboardFlow.Add(leaderboard);
+
+        private void updateLeaderboardExpandedState() =>
+            LeaderboardExpandedState.Value = !LocalUserPlaying.Value || HUDOverlay.HoldingForHUD.Value;
+
+        #endregion
+
         #region Fail Logic
 
         protected FailOverlay FailOverlay { get; private set; }
@@ -824,8 +896,16 @@ namespace osu.Game.Screens.Play
 
         private bool onFail()
         {
+            // Failing after the quit sequence has started may cause weird side effects with the fail animation / effects.
+            if (GameplayState.HasQuit)
+                return false;
+
             if (!CheckModsAllowFailure())
                 return false;
+
+            Debug.Assert(!GameplayState.HasFailed);
+            Debug.Assert(!GameplayState.HasPassed);
+            Debug.Assert(!GameplayState.HasQuit);
 
             GameplayState.HasFailed = true;
 
@@ -840,7 +920,7 @@ namespace osu.Game.Screens.Play
             failAnimationLayer.Start();
 
             if (GameplayState.Mods.OfType<IApplicableFailOverride>().Any(m => m.RestartOnFail))
-                Restart();
+                Restart(true);
 
             return true;
         }
@@ -877,7 +957,7 @@ namespace osu.Game.Screens.Play
         private double? lastPauseActionTime;
 
         protected bool PauseCooldownActive =>
-            lastPauseActionTime.HasValue && GameplayClockContainer.GameplayClock.CurrentTime < lastPauseActionTime + pause_cooldown;
+            lastPauseActionTime.HasValue && GameplayClockContainer.CurrentTime < lastPauseActionTime + pause_cooldown;
 
         /// <summary>
         /// A set of conditionals which defines whether the current game state and configuration allows for
@@ -915,7 +995,7 @@ namespace osu.Game.Screens.Play
 
             GameplayClockContainer.Stop();
             PauseOverlay.Show();
-            lastPauseActionTime = GameplayClockContainer.GameplayClock.CurrentTime;
+            lastPauseActionTime = GameplayClockContainer.CurrentTime;
             return true;
         }
 
@@ -972,6 +1052,8 @@ namespace osu.Game.Screens.Play
             });
 
             HUDOverlay.IsPlaying.BindTo(localUserPlaying);
+            ShowingOverlayComponents.BindTo(HUDOverlay.ShowHud);
+
             DimmableStoryboard.IsBreakTime.BindTo(breakTracker.IsBreakTime);
 
             DimmableStoryboard.StoryboardReplacesBackground.BindTo(storyboardReplacesBackground);
@@ -984,12 +1066,8 @@ namespace osu.Game.Screens.Play
             foreach (var mod in GameplayState.Mods.OfType<IApplicableToHUD>())
                 mod.ApplyToHUD(HUDOverlay);
 
-            // Our mods are local copies of the global mods so they need to be re-applied to the track.
-            // This is done through the music controller (for now), because resetting speed adjustments on the beatmap track also removes adjustments provided by DrawableTrack.
-            // Todo: In the future, player will receive in a track and will probably not have to worry about this...
-            musicController.ResetTrackAdjustments();
             foreach (var mod in GameplayState.Mods.OfType<IApplicableToTrack>())
-                mod.ApplyToTrack(musicController.CurrentTrack);
+                mod.ApplyToTrack(GameplayClockContainer.AdjustmentsFromMods);
 
             updateGameplayState();
 
@@ -1005,10 +1083,10 @@ namespace osu.Game.Screens.Play
         /// </summary>
         protected virtual void StartGameplay()
         {
-            if (GameplayClockContainer.GameplayClock.IsRunning)
+            if (GameplayClockContainer.IsRunning)
                 throw new InvalidOperationException($"{nameof(StartGameplay)} should not be called when the gameplay clock is already running");
 
-            GameplayClockContainer.Reset(true);
+            GameplayClockContainer.Reset(startClock: true);
         }
 
         public override void OnSuspending(ScreenTransitionEvent e)
@@ -1022,7 +1100,10 @@ namespace osu.Game.Screens.Play
         public override bool OnExiting(ScreenExitEvent e)
         {
             screenSuspension?.RemoveAndDisposeImmediately();
-            failAnimationLayer?.RemoveFilters();
+
+            // Eagerly clean these up as disposal of child components is asynchronous and may leave sounds playing beyond user expectations.
+            failAnimationLayer?.Stop();
+            PauseOverlay?.StopAllSamples();
 
             if (LoadedBeatmapSuccessfully)
             {
@@ -1030,7 +1111,7 @@ namespace osu.Game.Screens.Play
                     GameplayState.HasQuit = true;
 
                 // if arriving here and the results screen preparation task hasn't run, it's safe to say the user has not completed the beatmap.
-                if (prepareScoreForDisplayTask == null)
+                if (prepareScoreForDisplayTask == null && DrawableRuleset.ReplayScore == null)
                     ScoreProcessor.FailScore(Score.ScoreInfo);
             }
 
@@ -1041,6 +1122,7 @@ namespace osu.Game.Screens.Play
             musicController.ResetTrackAdjustments();
 
             fadeOut();
+
             return base.OnExiting(e);
         }
 
@@ -1110,7 +1192,10 @@ namespace osu.Game.Screens.Play
         /// </summary>
         /// <param name="score">The <see cref="ScoreInfo"/> to be displayed in the results screen.</param>
         /// <returns>The <see cref="ResultsScreen"/>.</returns>
-        protected virtual ResultsScreen CreateResults(ScoreInfo score) => new SoloResultsScreen(score, true);
+        protected virtual ResultsScreen CreateResults(ScoreInfo score) => new SoloResultsScreen(score, true)
+        {
+            ShowUserStatistics = true
+        };
 
         private void fadeOut(bool instant = false)
         {

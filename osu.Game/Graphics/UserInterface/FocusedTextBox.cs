@@ -15,7 +15,7 @@ namespace osu.Game.Graphics.UserInterface
     /// <summary>
     /// A textbox which holds focus eagerly.
     /// </summary>
-    public class FocusedTextBox : OsuTextBox, IKeyBindingHandler<GlobalAction>
+    public partial class FocusedTextBox : OsuTextBox, IKeyBindingHandler<GlobalAction>
     {
         private bool focus;
 
@@ -88,6 +88,7 @@ namespace osu.Game.Graphics.UserInterface
                 if (Text.Length > 0)
                 {
                     Text = string.Empty;
+                    PlayFeedbackSample(FeedbackSampleType.TextRemove);
                     return true;
                 }
             }

@@ -12,7 +12,6 @@ using osu.Framework.Extensions;
 using osu.Framework.Extensions.IEnumerableExtensions;
 using osu.Framework.Logging;
 using osu.Framework.Platform;
-using osu.Framework.Testing;
 using osu.Game.Beatmaps.Formats;
 using osu.Game.Collections;
 using osu.Game.Database;
@@ -28,14 +27,13 @@ namespace osu.Game.Beatmaps
     /// <summary>
     /// Handles the storage and retrieval of Beatmaps/WorkingBeatmaps.
     /// </summary>
-    [ExcludeFromDynamicCompile]
     public class BeatmapImporter : RealmArchiveModelImporter<BeatmapSetInfo>
     {
         public override IEnumerable<string> HandledExtensions => new[] { ".osz" };
 
         protected override string[] HashableFileTypes => new[] { ".osu" };
 
-        public Action<(BeatmapSetInfo beatmapSet, bool isBatch)>? ProcessBeatmap { private get; set; }
+        public ProcessBeatmapDelegate? ProcessBeatmap { private get; set; }
 
         public BeatmapImporter(Storage storage, RealmAccess realm)
             : base(storage, realm)
@@ -44,7 +42,7 @@ namespace osu.Game.Beatmaps
 
         public override async Task<Live<BeatmapSetInfo>?> ImportAsUpdate(ProgressNotification notification, ImportTask importTask, BeatmapSetInfo original)
         {
-            var imported = await Import(notification, importTask);
+            var imported = await Import(notification, new[] { importTask }).ConfigureAwait(true);
 
             if (!imported.Any())
                 return null;
@@ -55,7 +53,14 @@ namespace osu.Game.Beatmaps
 
             // If there were no changes, ensure we don't accidentally nuke ourselves.
             if (first.ID == original.ID)
+            {
+                first.PerformRead(s =>
+                {
+                    // Re-run processing even in this case. We might have outdated metadata.
+                    ProcessBeatmap?.Invoke(s, MetadataLookupScope.OnlineFirst);
+                });
                 return first;
+            }
 
             first.PerformWrite(updated =>
             {
@@ -134,18 +139,9 @@ namespace osu.Game.Beatmaps
             // Handle collections using permissive difficulty name to track difficulties.
             foreach (var originalBeatmap in original.Beatmaps)
             {
-                var updatedBeatmap = updated.Beatmaps.FirstOrDefault(b => b.DifficultyName == originalBeatmap.DifficultyName);
-
-                if (updatedBeatmap == null)
-                    continue;
-
-                var collections = realm.All<BeatmapCollection>().AsEnumerable().Where(c => c.BeatmapMD5Hashes.Contains(originalBeatmap.MD5Hash));
-
-                foreach (var c in collections)
-                {
-                    c.BeatmapMD5Hashes.Remove(originalBeatmap.MD5Hash);
-                    c.BeatmapMD5Hashes.Add(updatedBeatmap.MD5Hash);
-                }
+                updated.Beatmaps
+                       .FirstOrDefault(b => b.DifficultyName == originalBeatmap.DifficultyName)?
+                       .TransferCollectionReferences(realm, originalBeatmap.MD5Hash);
             }
         }
 
@@ -205,10 +201,10 @@ namespace osu.Game.Beatmaps
             }
         }
 
-        protected override void PostImport(BeatmapSetInfo model, Realm realm, bool batchImport)
+        protected override void PostImport(BeatmapSetInfo model, Realm realm, ImportParameters parameters)
         {
-            base.PostImport(model, realm, batchImport);
-            ProcessBeatmap?.Invoke((model, batchImport));
+            base.PostImport(model, realm, parameters);
+            ProcessBeatmap?.Invoke(model, parameters.Batch ? MetadataLookupScope.LocalCacheFirst : MetadataLookupScope.OnlineFirst);
         }
 
         private void validateOnlineIds(BeatmapSetInfo beatmapSet, Realm realm)

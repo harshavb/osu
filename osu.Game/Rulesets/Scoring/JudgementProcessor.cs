@@ -13,7 +13,7 @@ using osu.Game.Rulesets.Replays;
 
 namespace osu.Game.Rulesets.Scoring
 {
-    public abstract class JudgementProcessor : Component
+    public abstract partial class JudgementProcessor : Component
     {
         /// <summary>
         /// Invoked when a new judgement has occurred. This occurs after the judgement has been processed by this <see cref="JudgementProcessor"/>.
@@ -29,6 +29,11 @@ namespace osu.Game.Rulesets.Scoring
         /// The maximum number of hits that can be judged.
         /// </summary>
         protected int MaxHits { get; private set; }
+
+        /// <summary>
+        /// Whether <see cref="SimulateAutoplay"/> is currently running.
+        /// </summary>
+        protected bool IsSimulating { get; private set; }
 
         /// <summary>
         /// The total number of judged <see cref="HitObject"/>s at the current point in time.
@@ -61,6 +66,11 @@ namespace osu.Game.Rulesets.Scoring
         /// <param name="result">The <see cref="JudgementResult"/> to apply.</param>
         public void ApplyResult(JudgementResult result)
         {
+#pragma warning disable CS0618
+            if (result.Type == HitResult.LegacyComboIncrease)
+                throw new ArgumentException(@$"A {nameof(HitResult.LegacyComboIncrease)} hit result cannot be applied.");
+#pragma warning restore CS0618
+
             JudgedHits++;
             lastAppliedResult = result;
 
@@ -141,6 +151,8 @@ namespace osu.Game.Rulesets.Scoring
         /// <param name="beatmap">The <see cref="IBeatmap"/> to simulate.</param>
         protected virtual void SimulateAutoplay(IBeatmap beatmap)
         {
+            IsSimulating = true;
+
             foreach (var obj in beatmap.HitObjects)
                 simulate(obj);
 
@@ -158,6 +170,8 @@ namespace osu.Game.Rulesets.Scoring
                 result.Type = GetSimulatedHitResult(judgement);
                 ApplyResult(result);
             }
+
+            IsSimulating = false;
         }
 
         protected override void Update()
