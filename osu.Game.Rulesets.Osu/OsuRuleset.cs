@@ -204,7 +204,7 @@ namespace osu.Game.Rulesets.Osu
                         new MultiMod(new OsuModMagnetised(), new OsuModRepel()),
                         new ModAdaptiveSpeed(),
                         new OsuModFreezeFrame(),
-                        new OsuModBubbles()
+                        new OsuModBubbles(),
                         new OsuModRewind()
                     };
 

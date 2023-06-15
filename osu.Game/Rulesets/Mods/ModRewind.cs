@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using osu.Framework.Bindables;
 using osu.Framework.Graphics.Sprites;
+using osu.Framework.Localisation;
 using osu.Game.Configuration;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.UI;
@@ -24,7 +25,7 @@ namespace osu.Game.Rulesets.Mods
 
         public override ModType Type => ModType.Fun;
 
-        public override string Description => "It's rewind time.";
+        public override LocalisableString Description => "It's rewind time.";
 
         public override double ScoreMultiplier => 1;
 
@@ -97,7 +98,7 @@ namespace osu.Game.Rulesets.Mods
                 // only occur if Seek() takes a really long time to complete.
                 Task.Run(async () =>
                 {
-                    await Task.Delay(500);
+                    await Task.Delay(500).ConfigureAwait(false);
                     running = false;
                 });
             };
